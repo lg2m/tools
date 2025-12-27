@@ -41,7 +41,7 @@ export function MainNav() {
         </div>
         <div className="flex items-center gap-4">
           <a
-            href="https://github.com"
+            href="https://github.com/lg2m/tools"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
