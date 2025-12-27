@@ -1,15 +1,17 @@
 import {
-  X,
-  FileAudio,
-  CheckCircle,
   AlertCircle,
+  CheckCircle,
+  Download,
+  FileAudio,
   Loader2,
-  Trash2,
   Pencil,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { downloadBlob } from '@/lib/audio/processor';
 import { cn } from '@/lib/utils';
 import type { AudioFile } from '@/types/audio';
 
@@ -132,6 +134,19 @@ export function FileQueue({
                       trimmed
                     </span>
                   )}
+                  {file.error && (
+                    <span
+                      className="rounded bg-destructive/20 px-1.5 py-0.5 text-destructive"
+                      title={file.error}
+                    >
+                      error
+                    </span>
+                  )}
+                  {file.result && (
+                    <span className="font-mono text-green-500">
+                      {formatFileSize(file.result.blob.size)}
+                    </span>
+                  )}
                 </div>
               </div>
               {file.status === 'processing' && (
@@ -143,6 +158,20 @@ export function FileQueue({
                     />
                   </div>
                 </div>
+              )}
+              {file.status === 'complete' && file.result && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() =>
+                    downloadBlob(file.result!.blob, file.result!.filename)
+                  }
+                  className="h-6 w-6 shrink-0 text-green-500 hover:text-green-600"
+                  title="Download processed file"
+                >
+                  <Download className="h-3 w-3" />
+                  <span className="sr-only">Download</span>
+                </Button>
               )}
               {file.status === 'queued' && onEditFile && (
                 <Button

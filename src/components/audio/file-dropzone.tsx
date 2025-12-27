@@ -1,6 +1,5 @@
+import { FolderOpen, Upload } from 'lucide-react';
 import { useCallback, useState } from 'react';
-
-import { Upload, FolderOpen } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
@@ -47,12 +46,12 @@ export function FileDropzone({ onFilesAdded }: FileDropzoneProps) {
   );
 
   return (
-    <div
+    <label
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        'relative flex min-h-[200px] flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors',
+        'relative flex min-h-[200px] cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed transition-colors',
         isDragging
           ? 'border-foreground bg-secondary/50'
           : 'border-border hover:border-muted-foreground/50',
@@ -63,7 +62,7 @@ export function FileDropzone({ onFilesAdded }: FileDropzoneProps) {
         accept="audio/*"
         multiple
         onChange={handleFileSelect}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="sr-only"
         // @ts-expect-error - webkitdirectory is a non-standard attribute
         webkitdirectory=""
         directory=""
@@ -75,7 +74,7 @@ export function FileDropzone({ onFilesAdded }: FileDropzoneProps) {
         <div>
           <p className="mb-1 font-medium">Drop audio files or folders here</p>
           <p className="text-sm text-muted-foreground">
-            Supports MP3, WAV, OGG, FLAC, M4A, and more
+            MP3, WAV, and other browser-supported formats
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -83,6 +82,6 @@ export function FileDropzone({ onFilesAdded }: FileDropzoneProps) {
           <span>Click to browse folders</span>
         </div>
       </div>
-    </div>
+    </label>
   );
 }

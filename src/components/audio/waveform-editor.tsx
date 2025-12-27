@@ -1,16 +1,15 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
-
 import {
-  Play,
+  Check,
   Pause,
+  Play,
+  RotateCcw,
   SkipBack,
   SkipForward,
+  Volume2,
   ZoomIn,
   ZoomOut,
-  RotateCcw,
-  Check,
-  Volume2,
 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

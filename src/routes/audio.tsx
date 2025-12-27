@@ -1,12 +1,12 @@
-import { useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
+import { useState } from 'react';
 
-import type { AudioFile, ToolConfig } from '@/types/audio';
 import { FileDropzone } from '@/components/audio/file-dropzone';
 import { FileQueue } from '@/components/audio/file-queue';
 import { ProcessingControls } from '@/components/audio/processing-controls';
 import { ToolSettings } from '@/components/audio/tool-settings';
 import { WaveformEditor } from '@/components/audio/waveform-editor';
+import type { AudioFile, ToolConfig } from '@/types/audio';
 
 export const Route = createFileRoute('/audio')({
   component: RouteComponent,
@@ -61,6 +61,12 @@ function RouteComponent() {
     setEditingFileId(null);
   };
 
+  const handleFileUpdate = (id: string, updates: Partial<AudioFile>) => {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, ...updates } : f)),
+    );
+  };
+
   const editingFile = files.find((f) => f.id === editingFileId);
 
   if (editingFile) {
@@ -101,7 +107,11 @@ function RouteComponent() {
         </div>
         <div className="flex flex-col gap-6">
           <ToolSettings config={config} onConfigChange={setConfig} />
-          <ProcessingControls files={files} config={config} />
+          <ProcessingControls
+            files={files}
+            config={config}
+            onFileUpdate={handleFileUpdate}
+          />
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -7,8 +7,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import type { ToolConfig } from '@/types/audio';
 
 type ToolSettingsProps = {
@@ -20,8 +20,6 @@ const outputFormats = [
   { value: 'wav', label: 'WAV' },
   { value: 'mp3', label: 'MP3' },
   { value: 'ogg', label: 'OGG' },
-  { value: 'flac', label: 'FLAC' },
-  { value: 'm4a', label: 'M4A' },
 ];
 
 const sampleRates = [
@@ -236,6 +234,9 @@ export function ToolSettings({ config, onConfigChange }: ToolSettingsProps) {
               }
             />
           </div>
+
+          <Separator className="my-4" />
+
           <div className="flex items-center justify-between">
             <div>
               <Label htmlFor="mono-toggle" className="text-sm font-medium">

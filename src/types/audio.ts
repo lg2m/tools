@@ -32,4 +32,10 @@ export type AudioFile = {
     start: number;
     end: number | null;
   };
+  result?: {
+    blob: Blob;
+    filename: string;
+    mimeType: string;
+  };
+  error?: string;
 };

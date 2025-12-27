@@ -1,14 +1,24 @@
-import { Play, Download, StopCircle, Settings2 } from 'lucide-react';
+import { Download, Play, Settings2, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  downloadBlob,
+  downloadMultipleBlobs,
+  processAudioFile,
+} from '@/lib/audio/processor';
 import type { AudioFile, ToolConfig } from '@/types/audio';
 
 type ProcessingControlsProps = {
   files: AudioFile[];
   config: ToolConfig;
+  onFileUpdate: (id: string, updates: Partial<AudioFile>) => void;
 };
 
-export function ProcessingControls({ files, config }: ProcessingControlsProps) {
+export function ProcessingControls({
+  files,
+  config,
+  onFileUpdate,
+}: ProcessingControlsProps) {
   const queuedFiles = files.filter((f) => f.status === 'queued');
   const completedFiles = files.filter((f) => f.status === 'complete');
   const isProcessing = files.some((f) => f.status === 'processing');
@@ -21,6 +31,63 @@ export function ProcessingControls({ files, config }: ProcessingControlsProps) {
     config.normalize.enabled && 'normalize',
     config.mono.enabled && 'mono',
   ].filter(Boolean);
+
+  const handleProcess = async () => {
+    for (const file of queuedFiles) {
+      onFileUpdate(file.id, { status: 'processing', progress: 0 });
+
+      try {
+        const result = await processAudioFile(
+          file.file,
+          config,
+          file.trimOverride,
+          (progress) => {
+            let overallProgress = 0;
+            switch (progress.stage) {
+              case 'decoding':
+                overallProgress = progress.progress * 0.2;
+                break;
+              case 'processing':
+                overallProgress = 20 + progress.progress * 0.5;
+                break;
+              case 'encoding':
+                overallProgress = 70 + progress.progress * 0.3;
+                break;
+            }
+            onFileUpdate(file.id, { progress: Math.round(overallProgress) });
+          },
+        );
+
+        onFileUpdate(file.id, {
+          status: 'complete',
+          progress: 100,
+          result: {
+            blob: result.blob,
+            filename: result.filename,
+            mimeType: result.mimeType,
+          },
+        });
+      } catch (error) {
+        onFileUpdate(file.id, {
+          status: 'error',
+          progress: 0,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+  };
+
+  const handleDownload = async () => {
+    const results = completedFiles
+      .filter((f) => f.result)
+      .map((f) => f.result!);
+
+    if (results.length === 1) {
+      downloadBlob(results[0].blob, results[0].filename);
+    } else if (results.length > 1) {
+      await downloadMultipleBlobs(results);
+    }
+  };
 
   return (
     <div className="rounded-lg border border-border bg-card">
@@ -38,9 +105,9 @@ export function ProcessingControls({ files, config }: ProcessingControlsProps) {
               <span>Pipeline:</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
-              {enabledOperations.map((op, i) => (
+              {enabledOperations.map((op) => (
                 <span
-                  key={i}
+                  key={String(op)}
                   className="rounded-full border border-border bg-secondary px-2 py-0.5 font-mono text-xs"
                 >
                   {op}
@@ -62,6 +129,7 @@ export function ProcessingControls({ files, config }: ProcessingControlsProps) {
               enabledOperations.length === 0 ||
               isProcessing
             }
+            onClick={handleProcess}
           >
             {isProcessing ? (
               <>
@@ -80,6 +148,7 @@ export function ProcessingControls({ files, config }: ProcessingControlsProps) {
             variant="outline"
             className="w-full bg-transparent"
             disabled={completedFiles.length === 0}
+            onClick={handleDownload}
           >
             <Download className="mr-2 h-4 w-4" />
             Download{' '}

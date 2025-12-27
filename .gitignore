@@ -21,3 +21,6 @@ dist/
 # Env vars
 .env*
 !.envrc
+
+# AI crap
+opencode.jsonc
