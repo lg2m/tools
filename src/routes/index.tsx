@@ -3,6 +3,13 @@ import { AudioWaveform } from 'lucide-react';
 
 export const Route = createFileRoute('/')({
   component: RouteComponent,
+  head: () => ({
+    meta: [
+      {
+        title: 'tools.zmeyer.dev',
+      },
+    ],
+  }),
 });
 
 const tools = [

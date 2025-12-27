@@ -10,6 +10,13 @@ import type { AudioFile, ToolConfig } from '@/types/audio';
 
 export const Route = createFileRoute('/audio')({
   component: RouteComponent,
+  head: () => ({
+    meta: [
+      {
+        title: 'Audio Tools | tools.zmeyer.dev',
+      },
+    ],
+  }),
 });
 
 function RouteComponent() {

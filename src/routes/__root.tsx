@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router';
+import { createRootRoute, Outlet, HeadContent } from '@tanstack/react-router';
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools';
 import * as React from 'react';
 import { Footer } from '@/components/footer';
@@ -12,6 +12,7 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <React.Fragment>
+      <HeadContent />
       <div className="font-sans antialiased flex min-h-screen flex-col">
         <ThemeProvider defaultTheme="system" storageKey="ui-theme">
           <MainNav />

@@ -14,6 +14,29 @@ export default defineConfig({
       },
     }),
   ],
+  html: {
+    title: 'tools.zmeyer.dev',
+    meta: {
+      description:
+        'Browser-based tools for bulk audio processing. Convert formats, adjust sample rates, and trim files locally without uploading data.',
+      viewport: 'width=device-width, initial-scale=1.0',
+      charset: 'utf-8',
+      'theme-color': '#000000',
+      // Open Graph tags for social sharing
+      'og:title': 'tools.zmeyer.dev',
+      'og:description':
+        'Browser-based tools for bulk audio processing. Convert formats, adjust sample rates, and trim files locally without uploading data.',
+      'og:type': 'website',
+      'og:url': 'https://tools.zmeyer.dev',
+      // Twitter Card tags
+      'twitter:card': 'summary_large_image',
+      'twitter:title': 'tools.zmeyer.dev',
+      'twitter:description':
+        'Browser-based tools for bulk audio processing. Convert formats, adjust sample rates, and trim files locally without uploading data.',
+      'twitter:creator': '@zmeyer',
+    },
+    favicon: './public/favicon.ico',
+  },
   tools: {
     rspack: {
       plugins: [
