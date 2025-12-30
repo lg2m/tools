@@ -1,9 +1,6 @@
-import { createMp3Encoder } from 'wasm-media-encoders';
+import { createMp3Encoder } from "wasm-media-encoders";
 
-export async function encodeMp3(
-  audioBuffer: AudioBuffer,
-  vbrQuality = 2,
-): Promise<Blob> {
+export async function encodeMp3(audioBuffer: AudioBuffer, vbrQuality = 2): Promise<Blob> {
   const encoder = await createMp3Encoder();
 
   const numChannels = audioBuffer.numberOfChannels;
@@ -46,5 +43,5 @@ export async function encodeMp3(
     resultOffset += chunk.length;
   }
 
-  return new Blob([result], { type: 'audio/mpeg' });
+  return new Blob([result], { type: "audio/mpeg" });
 }

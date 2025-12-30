@@ -69,9 +69,7 @@ export function fft(real: Float32Array, imag: Float32Array): void {
  * @param windowedData - Time-domain audio samples (must be power-of-2 length)
  * @returns Magnitude spectrum (half the input length)
  */
-export function computeMagnitudeSpectrum(
-  windowedData: Float32Array,
-): Float32Array {
+export function computeMagnitudeSpectrum(windowedData: Float32Array): Float32Array {
   const fftSize = windowedData.length;
   const real = new Float32Array(windowedData);
   const imag = new Float32Array(fftSize);

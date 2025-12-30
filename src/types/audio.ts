@@ -25,7 +25,7 @@ export type AudioFile = {
   name: string;
   size: number;
   type: string;
-  status: 'queued' | 'processing' | 'complete' | 'error';
+  status: "queued" | "processing" | "complete" | "error";
   progress: number;
   file: File;
   trimOverride?: {

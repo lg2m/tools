@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AudioRouteImport } from './routes/audio'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as LegacyAudioRouteImport } from './routes/legacy.audio'
 
 const AudioRoute = AudioRouteImport.update({
   id: '/audio',
@@ -22,31 +23,40 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LegacyAudioRoute = LegacyAudioRouteImport.update({
+  id: '/legacy/audio',
+  path: '/legacy/audio',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audio': typeof AudioRoute
+  '/legacy/audio': typeof LegacyAudioRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audio': typeof AudioRoute
+  '/legacy/audio': typeof LegacyAudioRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audio': typeof AudioRoute
+  '/legacy/audio': typeof LegacyAudioRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/audio'
+  fullPaths: '/' | '/audio' | '/legacy/audio'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/audio'
-  id: '__root__' | '/' | '/audio'
+  to: '/' | '/audio' | '/legacy/audio'
+  id: '__root__' | '/' | '/audio' | '/legacy/audio'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AudioRoute: typeof AudioRoute
+  LegacyAudioRoute: typeof LegacyAudioRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/legacy/audio': {
+      id: '/legacy/audio'
+      path: '/legacy/audio'
+      fullPath: '/legacy/audio'
+      preLoaderRoute: typeof LegacyAudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AudioRoute: AudioRoute,
+  LegacyAudioRoute: LegacyAudioRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

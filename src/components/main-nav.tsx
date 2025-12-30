@@ -1,19 +1,15 @@
-import { Link } from '@tanstack/react-router';
+import { Link } from "@tanstack/react-router";
 
-import { AudioWaveform, Github, Wrench } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { AudioWaveform, Github, Wrench } from "lucide-react";
 
-const tools = [{ name: 'Audio', href: '/audio', icon: AudioWaveform }];
+const tools = [{ name: "Audio", href: "/audio", icon: AudioWaveform }];
 
 export function MainNav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
         <div className="flex items-center gap-6">
-          <Link
-            to="/"
-            className="flex items-center gap-2 font-mono text-sm font-medium"
-          >
+          <Link to="/" className="flex items-center gap-2 font-mono text-sm font-medium">
             <Wrench className="h-4 w-4" />
             <span>tools</span>
           </Link>
@@ -23,15 +19,12 @@ export function MainNav() {
                 key={tool.href}
                 to={tool.href}
                 activeProps={{
-                  className: 'bg-secondary text-foreground',
+                  className: "bg-secondary text-foreground",
                 }}
                 inactiveProps={{
-                  className:
-                    'text-muted-foreground hover:bg-secondary/50 hover:text-foreground',
+                  className: "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                 }}
-                className={cn(
-                  'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors',
-                )}
+                className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors"
               >
                 <tool.icon className="h-4 w-4" />
                 {tool.name}

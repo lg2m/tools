@@ -18,10 +18,10 @@ export function encodeWav(audioBuffer: AudioBuffer): Blob {
   const buffer = new ArrayBuffer(44 + dataLength);
   const view = new DataView(buffer);
 
-  writeString(view, 0, 'RIFF');
+  writeString(view, 0, "RIFF");
   view.setUint32(4, 36 + dataLength, true);
-  writeString(view, 8, 'WAVE');
-  writeString(view, 12, 'fmt ');
+  writeString(view, 8, "WAVE");
+  writeString(view, 12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
@@ -29,12 +29,12 @@ export function encodeWav(audioBuffer: AudioBuffer): Blob {
   view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
   view.setUint16(32, numChannels * bytesPerSample, true);
   view.setUint16(34, bitsPerSample, true);
-  writeString(view, 36, 'data');
+  writeString(view, 36, "data");
   view.setUint32(40, dataLength, true);
 
   floatTo16BitPCM(view, 44, interleaved);
 
-  return new Blob([buffer], { type: 'audio/wav' });
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 function writeString(view: DataView, offset: number, string: string): void {
@@ -43,11 +43,7 @@ function writeString(view: DataView, offset: number, string: string): void {
   }
 }
 
-function floatTo16BitPCM(
-  view: DataView,
-  offset: number,
-  input: Float32Array,
-): void {
+function floatTo16BitPCM(view: DataView, offset: number, input: Float32Array): void {
   for (let i = 0; i < input.length; i++) {
     const s = Math.max(-1, Math.min(1, input[i]));
     view.setInt16(offset + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);

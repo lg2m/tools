@@ -1,9 +1,6 @@
-import { createOggEncoder } from 'wasm-media-encoders';
+import { createOggEncoder } from "wasm-media-encoders";
 
-export async function encodeOgg(
-  audioBuffer: AudioBuffer,
-  vbrQuality = 3,
-): Promise<Blob> {
+export async function encodeOgg(audioBuffer: AudioBuffer, vbrQuality = 3): Promise<Blob> {
   const encoder = await createOggEncoder();
 
   const numChannels = audioBuffer.numberOfChannels;
@@ -46,5 +43,5 @@ export async function encodeOgg(
     resultOffset += chunk.length;
   }
 
-  return new Blob([result], { type: 'audio/ogg' });
+  return new Blob([result], { type: "audio/ogg" });
 }

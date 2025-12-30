@@ -1,7 +1,7 @@
-import type { ToolConfig } from '@/types/audio';
-import { encodeMp3 } from './encoders/mp3';
-import { encodeOgg } from './encoders/ogg';
-import { encodeWav } from './encoders/wav';
+import type { ToolConfig } from "@/types/audio";
+import { encodeMp3 } from "./encoders/mp3";
+import { encodeOgg } from "./encoders/ogg";
+import { encodeWav } from "./encoders/wav";
 
 export type ProcessingResult = {
   blob: Blob;
@@ -10,7 +10,7 @@ export type ProcessingResult = {
 };
 
 export type ProcessingProgress = {
-  stage: 'decoding' | 'processing' | 'encoding';
+  stage: "decoding" | "processing" | "encoding";
   progress: number;
 };
 
@@ -22,38 +22,21 @@ export async function decodeAudioFile(file: File): Promise<AudioBuffer> {
   return audioBuffer;
 }
 
-export function trimAudio(
-  buffer: AudioBuffer,
-  startTime: number,
-  endTime: number | null,
-): AudioBuffer {
+export function trimAudio(buffer: AudioBuffer, startTime: number, endTime: number | null): AudioBuffer {
   const sampleRate = buffer.sampleRate;
   const startSample = Math.floor(startTime * sampleRate);
-  const endSample =
-    endTime !== null ? Math.floor(endTime * sampleRate) : buffer.length;
+  const endSample = endTime !== null ? Math.floor(endTime * sampleRate) : buffer.length;
 
   const trimmedLength = Math.max(0, endSample - startSample);
 
   if (trimmedLength === 0 || startSample >= buffer.length) {
-    const audioContext = new OfflineAudioContext(
-      buffer.numberOfChannels,
-      1,
-      sampleRate,
-    );
+    const audioContext = new OfflineAudioContext(buffer.numberOfChannels, 1, sampleRate);
     return audioContext.createBuffer(buffer.numberOfChannels, 1, sampleRate);
   }
 
-  const audioContext = new OfflineAudioContext(
-    buffer.numberOfChannels,
-    trimmedLength,
-    sampleRate,
-  );
+  const audioContext = new OfflineAudioContext(buffer.numberOfChannels, trimmedLength, sampleRate);
 
-  const trimmedBuffer = audioContext.createBuffer(
-    buffer.numberOfChannels,
-    trimmedLength,
-    sampleRate,
-  );
+  const trimmedBuffer = audioContext.createBuffer(buffer.numberOfChannels, trimmedLength, sampleRate);
 
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const sourceData = buffer.getChannelData(channel);
@@ -67,10 +50,7 @@ export function trimAudio(
   return trimmedBuffer;
 }
 
-export async function resampleAudio(
-  buffer: AudioBuffer,
-  targetSampleRate: number,
-): Promise<AudioBuffer> {
+export async function resampleAudio(buffer: AudioBuffer, targetSampleRate: number): Promise<AudioBuffer> {
   if (buffer.sampleRate === targetSampleRate) {
     return buffer;
   }
@@ -78,11 +58,7 @@ export async function resampleAudio(
   const duration = buffer.duration;
   const targetLength = Math.ceil(duration * targetSampleRate);
 
-  const offlineContext = new OfflineAudioContext(
-    buffer.numberOfChannels,
-    targetLength,
-    targetSampleRate,
-  );
+  const offlineContext = new OfflineAudioContext(buffer.numberOfChannels, targetLength, targetSampleRate);
 
   const source = offlineContext.createBufferSource();
   source.buffer = buffer;
@@ -112,17 +88,9 @@ export function normalizeAudio(buffer: AudioBuffer): AudioBuffer {
   const targetPeak = 0.99;
   const gain = targetPeak / peakAmplitude;
 
-  const audioContext = new OfflineAudioContext(
-    buffer.numberOfChannels,
-    buffer.length,
-    buffer.sampleRate,
-  );
+  const audioContext = new OfflineAudioContext(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
 
-  const normalizedBuffer = audioContext.createBuffer(
-    buffer.numberOfChannels,
-    buffer.length,
-    buffer.sampleRate,
-  );
+  const normalizedBuffer = audioContext.createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
 
   for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
     const sourceData = buffer.getChannelData(channel);
@@ -141,16 +109,8 @@ export function convertToMono(buffer: AudioBuffer): AudioBuffer {
     return buffer;
   }
 
-  const audioContext = new OfflineAudioContext(
-    1,
-    buffer.length,
-    buffer.sampleRate,
-  );
-  const monoBuffer = audioContext.createBuffer(
-    1,
-    buffer.length,
-    buffer.sampleRate,
-  );
+  const audioContext = new OfflineAudioContext(1, buffer.length, buffer.sampleRate);
+  const monoBuffer = audioContext.createBuffer(1, buffer.length, buffer.sampleRate);
   const monoData = monoBuffer.getChannelData(0);
 
   for (let i = 0; i < buffer.length; i++) {
@@ -164,16 +124,13 @@ export function convertToMono(buffer: AudioBuffer): AudioBuffer {
   return monoBuffer;
 }
 
-export async function encodeAudio(
-  buffer: AudioBuffer,
-  format: string,
-): Promise<Blob> {
+export async function encodeAudio(buffer: AudioBuffer, format: string): Promise<Blob> {
   switch (format.toLowerCase()) {
-    case 'wav':
+    case "wav":
       return encodeWav(buffer);
-    case 'mp3':
+    case "mp3":
       return encodeMp3(buffer);
-    case 'ogg':
+    case "ogg":
       return encodeOgg(buffer);
     default:
       throw new Error(`Unsupported format: ${format}`);
@@ -182,12 +139,12 @@ export async function encodeAudio(
 
 export function getFormatExtension(format: string): string {
   switch (format.toLowerCase()) {
-    case 'wav':
-      return 'wav';
-    case 'mp3':
-      return 'mp3';
-    case 'ogg':
-      return 'ogg';
+    case "wav":
+      return "wav";
+    case "mp3":
+      return "mp3";
+    case "ogg":
+      return "ogg";
     default:
       return format;
   }
@@ -195,14 +152,14 @@ export function getFormatExtension(format: string): string {
 
 export function getFormatMimeType(format: string): string {
   switch (format.toLowerCase()) {
-    case 'wav':
-      return 'audio/wav';
-    case 'mp3':
-      return 'audio/mpeg';
-    case 'ogg':
-      return 'audio/ogg';
+    case "wav":
+      return "audio/wav";
+    case "mp3":
+      return "audio/mpeg";
+    case "ogg":
+      return "audio/ogg";
     default:
-      return 'application/octet-stream';
+      return "application/octet-stream";
   }
 }
 
@@ -212,42 +169,40 @@ export async function processAudioFile(
   trimOverride?: { start: number; end: number | null },
   onProgress?: (progress: ProcessingProgress) => void,
 ): Promise<ProcessingResult> {
-  onProgress?.({ stage: 'decoding', progress: 0 });
+  onProgress?.({ stage: "decoding", progress: 0 });
   let buffer = await decodeAudioFile(file);
-  onProgress?.({ stage: 'decoding', progress: 100 });
+  onProgress?.({ stage: "decoding", progress: 100 });
 
-  onProgress?.({ stage: 'processing', progress: 0 });
+  onProgress?.({ stage: "processing", progress: 0 });
 
   if (config.trim.enabled || trimOverride) {
     const trimStart = trimOverride?.start ?? config.trim.startTime;
     const trimEnd = trimOverride?.end ?? config.trim.endTime;
     buffer = trimAudio(buffer, trimStart, trimEnd);
   }
-  onProgress?.({ stage: 'processing', progress: 25 });
+  onProgress?.({ stage: "processing", progress: 25 });
 
   if (config.downsample.enabled) {
     buffer = await resampleAudio(buffer, config.downsample.targetSampleRate);
   }
-  onProgress?.({ stage: 'processing', progress: 50 });
+  onProgress?.({ stage: "processing", progress: 50 });
 
   if (config.normalize.enabled) {
     buffer = normalizeAudio(buffer);
   }
-  onProgress?.({ stage: 'processing', progress: 75 });
+  onProgress?.({ stage: "processing", progress: 75 });
 
   if (config.mono.enabled) {
     buffer = convertToMono(buffer);
   }
-  onProgress?.({ stage: 'processing', progress: 100 });
+  onProgress?.({ stage: "processing", progress: 100 });
 
-  onProgress?.({ stage: 'encoding', progress: 0 });
-  const outputFormat = config.convert.enabled
-    ? config.convert.outputFormat
-    : 'wav';
+  onProgress?.({ stage: "encoding", progress: 0 });
+  const outputFormat = config.convert.enabled ? config.convert.outputFormat : "wav";
   const blob = await encodeAudio(buffer, outputFormat);
-  onProgress?.({ stage: 'encoding', progress: 100 });
+  onProgress?.({ stage: "encoding", progress: 100 });
 
-  const baseName = file.name.replace(/\.[^/.]+$/, '');
+  const baseName = file.name.replace(/\.[^/.]+$/, "");
   const extension = getFormatExtension(outputFormat);
   const filename = `${baseName}.${extension}`;
 
@@ -260,7 +215,7 @@ export async function processAudioFile(
 
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   document.body.appendChild(a);
@@ -269,21 +224,19 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-export async function downloadMultipleBlobs(
-  results: ProcessingResult[],
-): Promise<void> {
+export async function downloadMultipleBlobs(results: ProcessingResult[]): Promise<void> {
   if (results.length === 1) {
     downloadBlob(results[0].blob, results[0].filename);
     return;
   }
 
-  const JSZip = (await import('jszip')).default;
+  const JSZip = (await import("jszip")).default;
   const zip = new JSZip();
 
   for (const result of results) {
     zip.file(result.filename, result.blob);
   }
 
-  const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, 'audio-processed.zip');
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  downloadBlob(zipBlob, "audio-processed.zip");
 }

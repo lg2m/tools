@@ -1,4 +1,4 @@
-import { Wrench } from 'lucide-react';
+import { Wrench } from "lucide-react";
 
 export function Footer() {
   return (

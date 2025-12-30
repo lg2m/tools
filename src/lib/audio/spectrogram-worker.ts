@@ -75,10 +75,7 @@ interface SpectrogramResponse {
 self.onmessage = (e: MessageEvent<SpectrogramRequest>) => {
   const { channelData, fftSize, targetFrames } = e.data;
 
-  const hopSize = Math.max(
-    256,
-    Math.floor((channelData.length - fftSize) / targetFrames),
-  );
+  const hopSize = Math.max(256, Math.floor((channelData.length - fftSize) / targetFrames));
   const numFrames = Math.floor((channelData.length - fftSize) / hopSize);
   const numBins = fftSize / 2;
 
