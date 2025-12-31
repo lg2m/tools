@@ -44,7 +44,7 @@ export function useHotkeys(audioHandlers: {
         addAnnotation,
         setLastUsedLabel,
       } = domainState;
-      const { toggleHotkeys, toggleBatchProcessor } = uiState;
+      const { toggleHotkeys, toggleBatchProcessor, mode } = uiState;
 
       const currentFile = files[currentFileIndex];
 
@@ -113,11 +113,15 @@ export function useHotkeys(audioHandlers: {
           break;
 
         case "Enter": {
-          if (pendingSelection) {
+          if (mode === "trim" && currentFile.trimStart && currentFile.trimEnd) {
+            audioHandlers.playRange(currentFile.trimStart, currentFile.trimEnd);
+          } else if (pendingSelection) {
             audioHandlers.playRange(pendingSelection.startTime, pendingSelection.endTime);
           } else if (selectedAnnotationId) {
             const annotation = annotations.find((a) => a.id === selectedAnnotationId);
-            if (annotation) audioHandlers.playRange(annotation.startTime, annotation.endTime);
+            if (annotation) {
+              audioHandlers.playRange(annotation.startTime, annotation.endTime);
+            }
           }
           break;
         }
