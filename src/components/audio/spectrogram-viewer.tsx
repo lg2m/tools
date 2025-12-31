@@ -1,131 +1,112 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useShallow } from "zustand/shallow";
 
-interface SpectrogramViewerProps {
-  audioUrl: string;
-  currentTime: number;
-  zoom: number;
-  panOffset: number;
-}
+import { useCanvas, useSpectrogramData } from "@/hooks/audio";
+import { useAnnotatorStore } from "@/stores/audio";
 
-export function SpectrogramViewer({ audioUrl, currentTime, zoom, panOffset }: SpectrogramViewerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [spectrogramData, setSpectrogramData] = useState<number[][]>([]);
-  const [duration, setDuration] = useState(0);
+export function SpectrogramViewer() {
+  // Get state from store - same pattern as WaveformViewer
+  const { currentFile, currentTime, zoom, panOffset } = useAnnotatorStore(
+    useShallow((s) => {
+      const file = s.files[s.currentFileIndex];
+      return {
+        currentFile: file,
+        currentTime: s.currentTime,
+        zoom: s.zoom,
+        panOffset: s.panOffset,
+      };
+    }),
+  );
 
-  useEffect(() => {
-    const loadAudio = async () => {
-      try {
-        const response = await fetch(audioUrl);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioContext = new AudioContext();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  const { data } = useSpectrogramData(currentFile?.url ?? null);
+  const duration = currentFile?.duration ?? data?.duration ?? 0;
 
-        // Generate spectrogram data (simplified)
-        const channelData = audioBuffer.getChannelData(0);
-        const fftSize = 2048;
-        const frequencyBins = fftSize / 2;
-        const timeSlices = 200;
-        const samplesPerSlice = Math.floor(channelData.length / timeSlices);
+  // View state for drawing
+  const view = useMemo(() => ({ zoom, panOffset, duration }), [zoom, panOffset, duration]);
 
-        const data: number[][] = [];
+  const draw = useCallback(
+    ({ ctx, width, height }: { ctx: CanvasRenderingContext2D; width: number; height: number }) => {
+      if (!data) return;
 
-        for (let t = 0; t < timeSlices; t++) {
-          const slice: number[] = [];
-          const startSample = t * samplesPerSlice;
+      const { data: spectrogramData, duration: specDuration } = data;
 
-          for (let f = 0; f < frequencyBins / 8; f++) {
-            // Simplified frequency analysis
-            let sum = 0;
-            const freqSamples = 32;
-            for (let i = 0; i < freqSamples; i++) {
-              const sample = startSample + f * freqSamples + i;
-              if (sample < channelData.length) {
-                sum += Math.abs(channelData[sample]);
-              }
-            }
-            slice.push(sum / freqSamples);
-          }
-          data.push(slice);
+      // Clear
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(0, 0, width, height);
+
+      // Calculate visible range based on zoom and pan
+      const visibleStart = view.panOffset;
+      const visibleEnd = view.panOffset + specDuration / view.zoom;
+
+      // Draw spectrogram
+      const sliceWidth = width / spectrogramData.length;
+      const binHeight = height / spectrogramData[0].length;
+
+      // Calculate which time slices are visible
+      const startSlice = Math.floor((visibleStart / specDuration) * spectrogramData.length);
+      const endSlice = Math.ceil((visibleEnd / specDuration) * spectrogramData.length);
+
+      for (let t = Math.max(0, startSlice); t < Math.min(spectrogramData.length, endSlice); t++) {
+        const slice = spectrogramData[t];
+        const sliceTime = (t / spectrogramData.length) * specDuration;
+        const x = ((sliceTime - visibleStart) / (visibleEnd - visibleStart)) * width;
+
+        for (let f = 0; f < slice.length; f++) {
+          const magnitude = slice[f];
+          const y = height - f * binHeight - binHeight;
+
+          // Color based on magnitude
+          const intensity = Math.min(255, magnitude * 2000);
+          const hue = 140 + (1 - magnitude * 100) * 100;
+          ctx.fillStyle = `hsla(${hue}, 70%, ${30 + intensity / 8}%, ${0.3 + magnitude * 70})`;
+          ctx.fillRect(x, y, Math.ceil(sliceWidth * view.zoom) + 1, Math.ceil(binHeight) + 1);
         }
-
-        setSpectrogramData(data);
-        setDuration(audioBuffer.duration);
-      } catch (error) {
-        console.error("[v0] Error loading audio for spectrogram:", error);
       }
-    };
 
-    loadAudio();
-  }, [audioUrl]);
+      // Draw frequency grid
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = (height / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
 
-  useEffect(() => {
-    if (!canvasRef.current || spectrogramData.length === 0) return;
+      // Draw playhead
+      const playheadX = ((currentTime - visibleStart) / (visibleEnd - visibleStart)) * width;
+      if (playheadX >= 0 && playheadX <= width) {
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(playheadX, 0);
+        ctx.lineTo(playheadX, height);
+        ctx.stroke();
+      }
 
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+      // Frequency labels
+      ctx.fillStyle = "#666";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "right";
+      const freqs = ["20kHz", "15kHz", "10kHz", "5kHz", "0Hz"];
+      for (let i = 0; i < freqs.length; i++) {
+        ctx.fillText(freqs[i], width - 4, (height / 4) * i + 12);
+      }
+    },
+    [data, view, currentTime],
+  );
 
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+  const canvasRef = useCanvas(draw);
 
-    const width = rect.width;
-    const height = rect.height;
-
-    // Clear
-    ctx.fillStyle = "#0a0a0a";
-    ctx.fillRect(0, 0, width, height);
-
-    // Draw spectrogram
-    const sliceWidth = width / spectrogramData.length;
-    const binHeight = height / spectrogramData[0].length;
-
-    spectrogramData.forEach((slice, t) => {
-      slice.forEach((magnitude, f) => {
-        const x = t * sliceWidth;
-        const y = height - f * binHeight - binHeight;
-
-        // Color based on magnitude
-        const intensity = Math.min(255, magnitude * 2000);
-        const hue = 140 + (1 - magnitude * 100) * 100;
-        ctx.fillStyle = `hsla(${hue}, 70%, ${30 + intensity / 8}%, ${0.3 + magnitude * 70})`;
-        ctx.fillRect(x, y, Math.ceil(sliceWidth) + 1, Math.ceil(binHeight) + 1);
-      });
-    });
-
-    // Draw frequency grid
-    ctx.strokeStyle = "#1a1a1a";
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-      const y = (height / 4) * i;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-
-    // Draw playhead
-    const playheadX = (currentTime / duration) * width;
-    if (playheadX >= 0 && playheadX <= width) {
-      ctx.strokeStyle = "#ef4444";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(playheadX, 0);
-      ctx.lineTo(playheadX, height);
-      ctx.stroke();
-    }
-
-    // Frequency labels
-    ctx.fillStyle = "#666";
-    ctx.font = "10px monospace";
-    ctx.textAlign = "right";
-    const freqs = ["20kHz", "15kHz", "10kHz", "5kHz", "0Hz"];
-    freqs.forEach((freq, i) => {
-      ctx.fillText(freq, width - 4, (height / 4) * i + 12);
-    });
-  }, [spectrogramData, currentTime, duration, zoom, panOffset]);
+  // Early return after all hooks
+  if (!currentFile) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-lg border border-border bg-card p-3">
+        <div className="text-sm text-muted-foreground">No file selected</div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full rounded-lg border border-border bg-card p-4">

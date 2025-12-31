@@ -1,7 +1,6 @@
-import * as React from "react";
-
-import { createRootRoute, Outlet, HeadContent, Scripts } from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import * as React from "react";
 
 import { ThemeProvider } from "@/components/theme-provider";
 

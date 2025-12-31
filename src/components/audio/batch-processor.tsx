@@ -1,8 +1,7 @@
+import { AlertCircle, CheckCircle2, Loader2, Play, X } from "lucide-react";
 import { useState } from "react";
 
-import { X, Play, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
-
-import type { AudioFile, Annotation } from "@/lib/audio/types";
+import type { Annotation, AudioFile } from "@/lib/audio/types";
 
 interface ProcessingOptions {
   resample?: {

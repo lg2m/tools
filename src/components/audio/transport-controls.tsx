@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, ZoomIn, ZoomOut } from "lucide-react";
+import { Pause, Play, SkipBack, SkipForward, ZoomIn, ZoomOut } from "lucide-react";
 
 interface TransportControlsProps {
   isPlaying: boolean;

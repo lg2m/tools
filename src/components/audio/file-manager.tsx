@@ -1,26 +1,22 @@
+import { FileAudio, Scissors, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
-
+import { useShallow } from "zustand/shallow";
 import type { AudioFile } from "@/lib/audio/types";
-import { Upload, X, FileAudio, Scissors } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAnnotatorStore } from "@/stores/audio";
 
-interface FileManagerProps {
-  files: AudioFile[];
-  currentFileIndex: number;
-  onFileSelect: (index: number) => void;
-  onFileUpload: (files: File[]) => void;
-  onFileRemove: (fileId: string) => void;
-  onFileTrimUpdate: (fileId: string, trimStart?: number, trimEnd?: number) => void;
-}
+export function FileManager() {
+  const { files, currentFileIndex, selectFile, addFiles, removeFile, patchFile } = useAnnotatorStore(
+    useShallow((s) => ({
+      files: s.files,
+      currentFileIndex: s.currentFileIndex,
+      selectFile: s.selectFile,
+      addFiles: s.addFiles,
+      removeFile: s.removeFile,
+      patchFile: s.patchFile,
+    })),
+  );
 
-export function FileManager({
-  files,
-  currentFileIndex,
-  onFileSelect,
-  onFileUpload,
-  onFileRemove,
-  onFileTrimUpdate,
-}: FileManagerProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [expandedTrimId, setExpandedTrimId] = useState<string | null>(null);
 
@@ -28,14 +24,35 @@ export function FileManager({
     e.preventDefault();
     const droppedFiles = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith("audio/"));
     if (droppedFiles.length > 0) {
-      onFileUpload(droppedFiles);
+      handleFileUpload(droppedFiles);
     }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      onFileUpload(Array.from(e.target.files));
+      handleFileUpload(Array.from(e.target.files));
     }
+  };
+
+  const handleFileUpload = (newFiles: File[]) => {
+    const audioFiles: AudioFile[] = newFiles.map((file, index) => ({
+      id: `${Date.now()}-${index}`,
+      name: file.name,
+      url: URL.createObjectURL(file),
+      duration: 0,
+      format: file.type,
+      sampleRate: 44100,
+      channels: 2,
+      bitDepth: 16,
+      trimStart: undefined,
+      trimEnd: undefined,
+    }));
+
+    addFiles(audioFiles);
+  };
+
+  const handleFileTrimUpdate = (fileId: string, trimStart?: number, trimEnd?: number) => {
+    patchFile(fileId, { trimStart, trimEnd });
   };
 
   return (
@@ -43,6 +60,7 @@ export function FileManager({
       <div className="border-b border-border p-3">
         <div className="mb-2 text-[10px] font-medium tracking-wider text-muted-foreground">FILES</div>
         <button
+          type="button"
           onClick={() => inputRef.current?.click()}
           className="flex w-full items-center justify-center gap-2 rounded border border-border bg-muted py-2 text-xs text-muted-foreground transition-all hover:border-primary hover:bg-primary/10 hover:text-foreground"
         >
@@ -71,7 +89,14 @@ export function FileManager({
                       ? "bg-primary/20 text-foreground shadow-sm"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
-                  onClick={() => onFileSelect(index)}
+                  onClick={() => selectFile(index)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      selectFile(index);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                 >
                   <FileAudio className="h-3.5 w-3.5 shrink-0 opacity-60" />
                   <div className="min-w-0 flex-1">
@@ -86,6 +111,7 @@ export function FileManager({
                     </div>
                   </div>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setExpandedTrimId(expandedTrimId === file.id ? null : file.id);
@@ -99,9 +125,10 @@ export function FileManager({
                     <Scissors className="h-3 w-3" />
                   </button>
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onFileRemove(file.id);
+                      removeFile(file.id);
                     }}
                     className="opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
                   >
@@ -114,13 +141,19 @@ export function FileManager({
                     <div className="text-[10px] font-medium text-muted-foreground">TRIM POINTS</div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="mb-1 block text-[9px] text-muted-foreground">Start (s)</label>
+                        <label
+                          htmlFor={`trim-start-${file.id}`}
+                          className="mb-1 block text-[9px] text-muted-foreground"
+                        >
+                          Start (s)
+                        </label>
                         <input
+                          id={`trim-start-${file.id}`}
                           type="number"
                           value={file.trimStart ?? 0}
                           onChange={(e) => {
                             const value = Number(e.target.value);
-                            onFileTrimUpdate(file.id, value, file.trimEnd);
+                            handleFileTrimUpdate(file.id, value, file.trimEnd);
                           }}
                           onClick={(e) => e.stopPropagation()}
                           className="w-full rounded border border-border bg-card px-2 py-1 text-[11px] text-foreground focus:border-primary focus:outline-none"
@@ -130,13 +163,16 @@ export function FileManager({
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-[9px] text-muted-foreground">End (s)</label>
+                        <label htmlFor={`trim-end-${file.id}`} className="mb-1 block text-[9px] text-muted-foreground">
+                          End (s)
+                        </label>
                         <input
+                          id={`trim-end-${file.id}`}
                           type="number"
                           value={file.trimEnd ?? file.duration}
                           onChange={(e) => {
                             const value = Number(e.target.value);
-                            onFileTrimUpdate(file.id, file.trimStart, value);
+                            handleFileTrimUpdate(file.id, file.trimStart, value);
                           }}
                           onClick={(e) => e.stopPropagation()}
                           className="w-full rounded border border-border bg-card px-2 py-1 text-[11px] text-foreground focus:border-primary focus:outline-none"
@@ -147,9 +183,10 @@ export function FileManager({
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onFileTrimUpdate(file.id, undefined, undefined);
+                        handleFileTrimUpdate(file.id, undefined, undefined);
                       }}
                       className="w-full text-[10px] text-muted-foreground transition-colors hover:text-foreground"
                     >

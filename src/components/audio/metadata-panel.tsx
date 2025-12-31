@@ -2,17 +2,7 @@ import { Info } from "lucide-react";
 
 import type { AudioFile } from "@/lib/audio/types";
 
-interface MetadataPanelProps {
-  file: AudioFile;
-}
-
-export function MetadataPanel({ file }: MetadataPanelProps) {
-  const formatFileSize = (bytes = 0) => {
-    if (bytes === 0) return "Unknown";
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(2)} MB`;
-  };
-
+export function MetadataPanel({ file }: { file: AudioFile }) {
   const metadata = [
     { label: "Filename", value: file.name },
     { label: "Duration", value: file.duration > 0 ? `${file.duration.toFixed(2)}s` : "Loading..." },
