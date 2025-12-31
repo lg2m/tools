@@ -1,4 +1,5 @@
-import type { Annotation, AudioFile, Label } from "@/lib/audio/types";
+// TODO: move to types dir
+import type { Annotation, AudioFile, Label } from "@/features/audio/types";
 
 export interface Selection {
   startTime: number;

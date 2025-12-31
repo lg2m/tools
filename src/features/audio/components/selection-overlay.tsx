@@ -1,5 +1,5 @@
 import { Play as PlayIcon, X } from "lucide-react";
-import type { Label } from "@/lib/audio/types";
+import type { Label } from "@/features/audio/types";
 
 function formatTimeShort(seconds: number): string {
   const mins = Math.floor(seconds / 60);

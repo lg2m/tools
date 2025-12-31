@@ -5,9 +5,10 @@ import { useShallow } from "zustand/shallow";
 
 import { AudioAnnotatorShell } from "@/features/audio/components/audio-annotator-shell";
 import { useAudioAnnotatorState } from "@/features/audio/hooks/use-audio-annotator-state";
-import { useAudioPlayback, useHotkeys } from "@/hooks/audio";
-import type { Annotation } from "@/lib/audio/types";
-import { useAnnotatorStore } from "@/stores/audio";
+import { useAudioPlayback } from "@/features/audio/hooks/use-audio-playback";
+import { useHotkeys } from "@/features/audio/hooks/use-hotkeys";
+import type { Annotation } from "@/features/audio/types";
+import { useAnnotatorStore } from "@/features/audio/store";
 
 export const Route = createFileRoute("/audio")({
   component: AudioAnnotatorComponent,

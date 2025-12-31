@@ -1,18 +1,18 @@
 import type { RefObject } from "react";
 
-import type { Annotation, AudioFile, Label } from "@/lib/audio/types";
-import { AnnotationOverlay } from "@/components/audio/annotation-overlay";
-import { BatchProcessor } from "@/components/audio/batch-processor";
-import { FileManager } from "@/components/audio/file-manager";
-import { HotkeyOverlay } from "@/components/audio/hotkey-overlay";
-import { LabelManager } from "@/components/audio/label-manager";
-import { MetadataPanel } from "@/components/audio/metadata-panel";
-import { SelectionOverlay } from "@/components/audio/selection-overlay";
-import { Sidebar } from "@/components/audio/sidebar";
-import { SpectrogramViewer } from "@/components/audio/spectrogram-viewer";
-import { Toolbar } from "@/components/audio/toolbar";
-import { TransportControls } from "@/components/audio/transport-controls";
-import { WaveformViewer } from "@/components/audio/waveform-viewer";
+import type { Annotation, AudioFile, Label } from "@/features/audio/types";
+import { AnnotationOverlay } from "./annotation-overlay";
+import { BatchProcessor } from "./batch-processor";
+import { FileManager } from "./file-manager";
+import { HotkeyOverlay } from "./hotkey-overlay";
+import { LabelManager } from "./label-manager";
+import { MetadataPanel } from "./metadata-panel";
+import { SelectionOverlay } from "./selection-overlay";
+import { Sidebar } from "./sidebar";
+import { SpectrogramViewer } from "./spectrogram-viewer";
+import { Toolbar } from "./toolbar";
+import { TransportControls } from "./transport-controls";
+import { WaveformViewer } from "./waveform-viewer";
 
 interface AudioAnnotatorShellProps {
   files: AudioFile[];

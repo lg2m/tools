@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 
-import type { Label } from "@/lib/audio/types";
+import type { Label } from "@/features/audio/types";
 
 interface HotkeyOverlayProps {
   onClose: () => void;

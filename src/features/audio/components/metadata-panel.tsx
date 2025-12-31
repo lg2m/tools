@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 
-import type { AudioFile } from "@/lib/audio/types";
+import type { AudioFile } from "@/features/audio/types";
 
 export function MetadataPanel({ file }: { file: AudioFile }) {
   const metadata = [

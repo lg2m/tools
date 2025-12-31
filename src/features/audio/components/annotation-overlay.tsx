@@ -1,5 +1,5 @@
 import { Play as PlayIcon, Trash2, X } from "lucide-react";
-import type { Annotation, Label } from "@/lib/audio/types";
+import type { Annotation, Label } from "@/features/audio/types";
 import { cn } from "@/lib/utils";
 
 function formatTimeShort(seconds: number): string {

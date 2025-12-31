@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useAnnotatorStore } from "@/stores/audio";
+import { useAnnotatorStore } from "@/features/audio/store";
 
 export function useAudioPlayback() {
   const audioRef = useRef<HTMLAudioElement>(null);

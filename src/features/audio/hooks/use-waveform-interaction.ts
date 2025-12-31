@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 
-import type { Annotation } from "@/lib/audio/types";
-import { timeToX, type ViewState, xToTime } from "@/lib/audio/waveform-drawing";
-import { type Selection, useAnnotatorStore } from "@/stores/audio";
+import type { Annotation } from "@/features/audio/types";
+import { timeToX, type ViewState, xToTime } from "@/features/audio/types/waveform-drawing";
+import { type Selection, useAnnotatorStore } from "@/features/audio/store";
 
 type DragMode = "none" | "create" | "move" | "resize-start" | "resize-end" | "pan";
 

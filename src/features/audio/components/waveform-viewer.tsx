@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useShallow } from "zustand/shallow";
 
-import { useCanvas, useWaveformData, useWaveformInteraction } from "@/hooks/audio";
+import { useCanvas, useWaveformData, useWaveformInteraction } from "@/features/audio/hooks";
 import {
   drawAnnotations,
   drawBackground,
@@ -13,8 +13,8 @@ import {
   drawTrimRegion,
   drawWaveform,
   type ViewState,
-} from "@/lib/audio/waveform-drawing";
-import { useAnnotatorStore } from "@/stores/audio";
+} from "@/features/audio/types/waveform-drawing";
+import { useAnnotatorStore } from "@/features/audio/store";
 
 export function WaveformViewer() {
   const containerRef = useRef<HTMLDivElement>(null);

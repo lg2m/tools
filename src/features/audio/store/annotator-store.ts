@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
-import type { Annotation, AudioFile, Label } from "@/lib/audio/types";
+import type { Annotation, AudioFile, Label } from "@/features/audio/types";
 import type { AnnotatorStore, Selection } from "./types";
 
 const initialState = {

@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/shallow";
 
-import { useCanvas, useSpectrogramData } from "@/hooks/audio";
-import { useAnnotatorStore } from "@/stores/audio";
+import { useCanvas, useSpectrogramData } from "@/features/audio/hooks";
+import { useAnnotatorStore } from "@/features/audio/store";
 
 export function SpectrogramViewer() {
   // Get state from store - same pattern as WaveformViewer

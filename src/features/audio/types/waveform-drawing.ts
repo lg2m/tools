@@ -1,4 +1,4 @@
-import type { Annotation, Label } from "./types";
+import type { Annotation, Label } from ".";
 
 export interface DrawContext {
   ctx: CanvasRenderingContext2D;
@@ -17,6 +17,7 @@ export interface ViewState {
   duration: number;
 }
 
+// TODO: move somehwere else
 // Pure utility functions for time/position conversion
 export function timeToX(time: number, width: number, view: ViewState): number {
   const { panOffset, duration, zoom } = view;

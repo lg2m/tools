@@ -1,9 +1,9 @@
 import { FileAudio, Scissors, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
-import type { AudioFile } from "@/lib/audio/types";
+import type { AudioFile } from "@/features/audio/types";
 import { cn } from "@/lib/utils";
-import { useAnnotatorStore } from "@/stores/audio";
+import { useAnnotatorStore } from "@/features/audio/store";
 
 export function FileManager() {
   const { files, currentFileIndex, selectFile, addFiles, removeFile, patchFile } = useAnnotatorStore(

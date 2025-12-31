@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import type { Label } from "@/lib/audio/types";
+import type { Label } from "@/features/audio/types";
 import { cn } from "@/lib/utils";
 
 interface LabelSelectorProps {
