@@ -2,10 +2,10 @@ import { useMemo, useOptimistic } from "react";
 import { useShallow } from "zustand/shallow";
 
 import type { Annotation } from "@/features/audio/types";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore } from "@/features/audio/store";
 
 export function useAudioAnnotatorState() {
-  const { files, currentFileIndex, annotations } = useAnnotatorStore(
+  const { files, currentFileIndex, annotations } = useAudioDomainStore(
     useShallow((s) => ({
       files: s.files,
       currentFileIndex: s.currentFileIndex,

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import type { Annotation } from "@/features/audio/types";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 
 /**
  * Handles global keyboard shortcuts for the audio annotator.
@@ -29,7 +29,8 @@ export function useHotkeys(audioHandlers: {
 }) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const state = useAnnotatorStore.getState();
+      const domainState = useAudioDomainStore.getState();
+      const uiState = useAudioUiStore.getState();
       const {
         files,
         currentFileIndex,
@@ -37,14 +38,13 @@ export function useHotkeys(audioHandlers: {
         annotations,
         pendingSelection,
         selectedAnnotationId,
-        toggleHotkeys,
-        toggleBatchProcessor,
         setPendingSelection,
         setSelectedAnnotation,
         removeAnnotation,
         addAnnotation,
         setLastUsedLabel,
-      } = state;
+      } = domainState;
+      const { toggleHotkeys, toggleBatchProcessor } = uiState;
 
       const currentFile = files[currentFileIndex];
 

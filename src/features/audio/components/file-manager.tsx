@@ -3,10 +3,10 @@ import { useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 import type { AudioFile } from "@/features/audio/types";
 import { cn } from "@/lib/utils";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore } from "@/features/audio/store";
 
 export function FileManager() {
-  const { files, currentFileIndex, selectFile, addFiles, removeFile, patchFile } = useAnnotatorStore(
+  const { files, currentFileIndex, selectFile, addFiles, removeFile, patchFile } = useAudioDomainStore(
     useShallow((s) => ({
       files: s.files,
       currentFileIndex: s.currentFileIndex,

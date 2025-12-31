@@ -14,39 +14,33 @@ import {
   drawWaveform,
   type ViewState,
 } from "@/features/audio/types/waveform-drawing";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 
 export function WaveformViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Get state from store
-  const {
-    currentFile,
-    currentFileId,
-    currentTime,
-    zoom,
-    panOffset,
-    allAnnotations,
-    labels,
-    mode,
-    pendingSelection,
-    selectedAnnotationId,
-  } = useAnnotatorStore(
-    useShallow((s) => {
-      const file = s.files[s.currentFileIndex];
-      return {
-        currentFile: file,
-        currentFileId: file?.id,
-        currentTime: s.currentTime,
-        zoom: s.zoom,
-        panOffset: s.panOffset,
-        allAnnotations: s.annotations,
-        labels: s.labels,
-        mode: s.mode,
-        pendingSelection: s.pendingSelection,
-        selectedAnnotationId: s.selectedAnnotationId,
-      };
-    }),
+  const { currentFile, currentFileId, currentTime, allAnnotations, labels, pendingSelection, selectedAnnotationId } =
+    useAudioDomainStore(
+      useShallow((s) => {
+        const file = s.files[s.currentFileIndex];
+        return {
+          currentFile: file,
+          currentFileId: file?.id,
+          currentTime: s.currentTime,
+          allAnnotations: s.annotations,
+          labels: s.labels,
+          pendingSelection: s.pendingSelection,
+          selectedAnnotationId: s.selectedAnnotationId,
+        };
+      }),
+    );
+
+  const { zoom, panOffset, mode } = useAudioUiStore(
+    useShallow((s) => ({
+      zoom: s.zoom,
+      panOffset: s.panOffset,
+      mode: s.mode,
+    })),
   );
 
   // Filter annotations for current file

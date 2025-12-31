@@ -2,12 +2,12 @@ import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useShallow } from "zustand/shallow";
 import { cn } from "@/lib/utils";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore } from "@/features/audio/store";
 
 const PRESET_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#6366f1", "#ec4899", "#8b5cf6", "#14b8a6", "#f43f5e"];
 
 export function LabelManager() {
-  const { labels, lastUsedLabelId, addLabel, removeLabel } = useAnnotatorStore(
+  const { labels, lastUsedLabelId, addLabel, removeLabel } = useAudioDomainStore(
     useShallow((s) => ({
       labels: s.labels,
       lastUsedLabelId: s.lastUsedLabelId,

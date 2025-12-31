@@ -3,7 +3,7 @@ import { useShallow } from "zustand/shallow";
 
 import type { Annotation } from "@/features/audio/types";
 import { timeToX, type ViewState, xToTime } from "@/features/audio/types/waveform-drawing";
-import { type Selection, useAnnotatorStore } from "@/features/audio/store";
+import { type Selection, useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 
 type DragMode = "none" | "create" | "move" | "resize-start" | "resize-end" | "pan";
 
@@ -20,22 +20,16 @@ interface UseWaveformInteractionProps {
 
 export function useWaveformInteraction({ containerRef, annotations, view }: UseWaveformInteractionProps) {
   const {
-    mode,
     pendingSelection,
     selectedAnnotationId,
-    setZoom,
-    setPanOffset,
     updateAnnotation,
     setSelectedAnnotation,
     setPendingSelection,
     patchFile,
-  } = useAnnotatorStore(
+  } = useAudioDomainStore(
     useShallow((s) => ({
-      mode: s.mode,
       pendingSelection: s.pendingSelection,
       selectedAnnotationId: s.selectedAnnotationId,
-      setZoom: s.setZoom,
-      setPanOffset: s.setPanOffset,
       updateAnnotation: s.updateAnnotation,
       setSelectedAnnotation: s.setSelectedAnnotation,
       setPendingSelection: s.setPendingSelection,
@@ -43,7 +37,15 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
     })),
   );
 
-  const currentFile = useAnnotatorStore((s) => s.files[s.currentFileIndex]);
+  const { mode, setZoom, setPanOffset } = useAudioUiStore(
+    useShallow((s) => ({
+      mode: s.mode,
+      setZoom: s.setZoom,
+      setPanOffset: s.setPanOffset,
+    })),
+  );
+
+  const currentFile = useAudioDomainStore((s) => s.files[s.currentFileIndex]);
 
   // Drag state
   const [dragMode, setDragMode] = useState<DragMode>("none");

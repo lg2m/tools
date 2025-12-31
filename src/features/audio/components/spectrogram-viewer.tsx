@@ -2,20 +2,24 @@ import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { useCanvas, useSpectrogramData } from "@/features/audio/hooks";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 
 export function SpectrogramViewer() {
-  // Get state from store - same pattern as WaveformViewer
-  const { currentFile, currentTime, zoom, panOffset } = useAnnotatorStore(
+  const { currentFile, currentTime } = useAudioDomainStore(
     useShallow((s) => {
       const file = s.files[s.currentFileIndex];
       return {
         currentFile: file,
         currentTime: s.currentTime,
-        zoom: s.zoom,
-        panOffset: s.panOffset,
       };
     }),
+  );
+
+  const { zoom, panOffset } = useAudioUiStore(
+    useShallow((s) => ({
+      zoom: s.zoom,
+      panOffset: s.panOffset,
+    })),
   );
 
   const { data } = useSpectrogramData(currentFile?.url ?? null);

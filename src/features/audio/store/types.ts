@@ -6,7 +6,7 @@ export interface Selection {
   endTime: number;
 }
 
-export interface AnnotatorState {
+export interface AudioDomainState {
   // Files
   files: AudioFile[];
   currentFileIndex: number;
@@ -15,27 +15,15 @@ export interface AnnotatorState {
   isPlaying: boolean;
   currentTime: number;
 
-  // View
-  zoom: number;
-  panOffset: number;
-  viewMode: "waveform" | "spectrogram" | "both";
-
   // Annotations
   labels: Label[];
   annotations: Annotation[];
   lastUsedLabelId: string;
   pendingSelection: Selection | null;
   selectedAnnotationId: string | null;
-
-  // UI
-  mode: "annotate" | "trim";
-  leftSidebarOpen: boolean;
-  rightSidebarOpen: boolean;
-  showHotkeys: boolean;
-  showBatchProcessor: boolean;
 }
 
-export interface AnnotatorActions {
+export interface AudioDomainActions {
   // Files
   addFiles: (files: AudioFile[]) => void;
   removeFile: (fileId: string) => void;
@@ -46,11 +34,6 @@ export interface AnnotatorActions {
   setPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   resetPlayback: () => void;
-
-  // View
-  setZoom: (zoom: number) => void;
-  setPanOffset: (offset: number) => void;
-  setViewMode: (mode: "waveform" | "spectrogram" | "both") => void;
 
   // Annotations
   addAnnotation: (annotation: Annotation) => void;
@@ -64,6 +47,29 @@ export interface AnnotatorActions {
   removeLabel: (id: string) => void;
   updateLabel: (id: string, updates: Partial<Label>) => void;
   setLastUsedLabel: (id: string) => void;
+}
+
+export type AudioDomainStore = AudioDomainState & AudioDomainActions;
+
+export interface AudioUiState {
+  // View
+  zoom: number;
+  panOffset: number;
+  viewMode: "waveform" | "spectrogram" | "both";
+
+  // UI
+  mode: "annotate" | "trim";
+  leftSidebarOpen: boolean;
+  rightSidebarOpen: boolean;
+  showHotkeys: boolean;
+  showBatchProcessor: boolean;
+}
+
+export interface AudioUiActions {
+  // View
+  setZoom: (zoom: number) => void;
+  setPanOffset: (offset: number) => void;
+  setViewMode: (mode: "waveform" | "spectrogram" | "both") => void;
 
   // UI
   setMode: (mode: "annotate" | "trim") => void;
@@ -73,4 +79,4 @@ export interface AnnotatorActions {
   toggleBatchProcessor: () => void;
 }
 
-export type AnnotatorStore = AnnotatorState & AnnotatorActions;
+export type AudioUiStore = AudioUiState & AudioUiActions;

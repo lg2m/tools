@@ -1,15 +1,15 @@
 import { useRef } from "react";
-import { useAnnotatorStore } from "@/features/audio/store";
+import { useAudioDomainStore } from "@/features/audio/store";
 
 export function useAudioPlayback() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const playTokenRef = useRef(0);
 
-  const setPlaying = useAnnotatorStore((s) => s.setPlaying);
-  const setCurrentTime = useAnnotatorStore((s) => s.setCurrentTime);
-  const selectFile = useAnnotatorStore((s) => s.selectFile);
-  const files = useAnnotatorStore((s) => s.files);
-  const currentFileIndex = useAnnotatorStore((s) => s.currentFileIndex);
+  const setPlaying = useAudioDomainStore((s) => s.setPlaying);
+  const setCurrentTime = useAudioDomainStore((s) => s.setCurrentTime);
+  const selectFile = useAudioDomainStore((s) => s.selectFile);
+  const files = useAudioDomainStore((s) => s.files);
+  const currentFileIndex = useAudioDomainStore((s) => s.currentFileIndex);
 
   const play = () => {
     audioRef.current?.play();
