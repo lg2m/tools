@@ -1,7 +1,6 @@
 import { useEffect } from "react";
-
-import type { Annotation } from "@/features/audio/types";
 import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
+import type { Annotation } from "@/features/audio/types";
 
 /**
  * Handles global keyboard shortcuts for the audio annotator.

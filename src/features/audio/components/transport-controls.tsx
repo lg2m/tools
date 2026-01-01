@@ -1,6 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-
 import { ChevronLeft, ChevronRight, Pause, Play, SkipBack, SkipForward, ZoomIn, ZoomOut } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -91,7 +90,7 @@ export function TransportControls({
     // when dragging/scrubbing, show one extra digit if possible.
     const base = getTimeDecimalsFromSecPerPx(secPerPx);
     return isDraggingRef.current ? clamp(base + 1, 0, 3) : base;
-  }, [secPerPx, currentTime]); // currentTime to refresh while dragging
+  }, [secPerPx]); // currentTime to refresh while dragging
 
   const baseSeekStep = useMemo(() => {
     // slider step ~ 1px of time, clamped.
@@ -102,7 +101,7 @@ export function TransportControls({
   const seekStep = useMemo(() => {
     // TODO: implement hotkeys
     // Shift = finer, Alt = coarser, Ctrl/Meta = medium-fine
-    let s = baseSeekStep;
+    const s = baseSeekStep;
     // if (mods.shift) s /= 10;
     // if (mods.ctrl || mods.meta) s /= 5;
     // if (mods.alt) s *= 10;

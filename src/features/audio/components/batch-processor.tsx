@@ -1,31 +1,18 @@
-import { AlertCircle, CheckCircle2, Loader2, Play, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
+
+import { CheckCircle2, Loader2, Play, X } from "lucide-react";
 
 import type { Annotation, AudioFile } from "@/features/audio/types";
-
-interface ProcessingOptions {
-  resample?: {
-    enabled: boolean;
-    targetRate: number;
-  };
-  convert?: {
-    enabled: boolean;
-    format: "wav" | "mp3" | "flac" | "ogg";
-  };
-  mono?: {
-    enabled: boolean;
-  };
-  normalize?: {
-    enabled: boolean;
-    targetDb: number;
-  };
-  trim?: {
-    enabled: boolean;
-    usePerFileTrim: boolean;
-    globalStart: number;
-    globalEnd: number;
-  };
-}
+import type { AggregateProgress, FileProcessingState, ProcessingOptions } from "@/features/audio/batch/processor";
+import { processAudioBatch } from "@/features/audio/batch/processor";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { SelectValue } from "@radix-ui/react-select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface BatchProcessorProps {
   files: AudioFile[];
@@ -43,26 +30,63 @@ export function BatchProcessor({ files, annotations, onClose }: BatchProcessorPr
     trim: { enabled: false, usePerFileTrim: true, globalStart: 0, globalEnd: 0 },
   });
   const [processing, setProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [aggregateProgress, setAggregateProgress] = useState<AggregateProgress>({
+    totalFiles: files.length,
+    queuedFiles: files.length,
+    runningFiles: 0,
+    successfulFiles: 0,
+    failedFiles: 0,
+    percent: 0,
+  });
+  const [fileStatuses, setFileStatuses] = useState<Record<string, FileProcessingState>>({});
+  const [activeFile, setActiveFile] = useState<FileProcessingState | null>(null);
   const [exportFormat, setExportFormat] = useState<"json" | "csv" | "textgrid">("json");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const filesWithTrim = files.filter((f) => f.trimStart !== undefined || f.trimEnd !== undefined).length;
+  const failedFiles = Object.values(fileStatuses).filter((status) => status.status === "failed");
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
+    if (processing) return;
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setProcessing(true);
-    setProgress(0);
+    setAggregateProgress({
+      totalFiles: files.length,
+      queuedFiles: files.length,
+      runningFiles: 0,
+      successfulFiles: 0,
+      failedFiles: 0,
+      percent: 0,
+    });
+    setFileStatuses(
+      Object.fromEntries(
+        files.map((file) => [file.id, { fileId: file.id, fileName: file.name, status: "queued" as const }]),
+      ),
+    );
+    setActiveFile(null);
 
-    // Simulate processing
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setProcessing(false);
-          return 100;
+    try {
+      for await (const update of processAudioBatch(files, options, { signal: controller.signal })) {
+        setAggregateProgress(update.aggregate);
+        setFileStatuses((prev) => ({ ...prev, [update.file.fileId]: update.file }));
+        if (update.file.status === "running") {
+          setActiveFile(update.file);
         }
-        return prev + 2;
-      });
-    }, 50);
+      }
+    } finally {
+      setProcessing(false);
+      abortControllerRef.current = null;
+      setActiveFile(null);
+    }
+  };
+
+  const handleCancelProcessing = () => {
+    if (processing) {
+      abortControllerRef.current?.abort();
+    }
+    onClose();
   };
 
   const handleExportAnnotations = () => {
@@ -99,403 +123,390 @@ export function BatchProcessor({ files, annotations, onClose }: BatchProcessorPr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="relative flex h-[600px] w-[700px] flex-col rounded-lg border border-white/10 bg-[rgb(18,18,26)] shadow-2xl">
+      <Card className="w-full max-w-lg md:max-w-xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 p-4">
-          <div className="flex items-center gap-3">
-            <div className="h-1.5 w-1.5 rounded-full bg-[#7c3aed]" />
-            <h2 className="text-sm font-semibold text-white">Batch Operations</h2>
-            <span className="font-mono text-[11px] text-white/40">{files.length} files</span>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-3">
+            Batch Operations
+            <span className="font-mono text-xs text-muted-foreground">{files.length} files</span>
+          </CardTitle>
+          <CardAction>
+            <Button variant="ghost" size="icon-sm" onClick={handleCancelProcessing}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardAction>
+          {/* Tabs */}
+          <div className="flex border-b border-border pt-3">
+            <button
+              onClick={() => setActiveTab("process")}
+              className={`border-b-2 px-4 py-2.5 text-xs font-medium transition-all ${
+                activeTab === "process"
+                  ? "border-[#7c3aed] text-white"
+                  : "border-transparent text-white/50 hover:text-white/80"
+              }`}
+            >
+              Audio Processing
+            </button>
+            <button
+              onClick={() => setActiveTab("export")}
+              className={`border-b-2 px-4 py-2.5 text-xs font-medium transition-all ${
+                activeTab === "export"
+                  ? "border-[#7c3aed] text-white"
+                  : "border-transparent text-white/50 hover:text-white/80"
+              }`}
+            >
+              Export Annotations
+            </button>
           </div>
-          <button onClick={onClose} className="rounded p-1 text-white/50 hover:bg-white/5 hover:text-white">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-white/5 px-4">
-          <button
-            onClick={() => setActiveTab("process")}
-            className={`border-b-2 px-4 py-2.5 text-xs font-medium transition-all ${
-              activeTab === "process"
-                ? "border-[#7c3aed] text-white"
-                : "border-transparent text-white/50 hover:text-white/80"
-            }`}
-          >
-            Audio Processing
-          </button>
-          <button
-            onClick={() => setActiveTab("export")}
-            className={`border-b-2 px-4 py-2.5 text-xs font-medium transition-all ${
-              activeTab === "export"
-                ? "border-[#7c3aed] text-white"
-                : "border-transparent text-white/50 hover:text-white/80"
-            }`}
-          >
-            Export Annotations
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === "process" ? (
-            <div className="space-y-6">
-              {/* Resample */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={options.resample?.enabled}
-                    onChange={(e) =>
-                      setOptions({
-                        ...options,
-                        resample: { ...options.resample!, enabled: e.target.checked },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                  />
-                  <span className="text-sm font-medium text-white">Resample</span>
-                </label>
-                {options.resample?.enabled && (
-                  <div className="ml-6 space-y-2">
-                    <label className="block text-xs text-white/60">Target Sample Rate (Hz)</label>
-                    <select
-                      value={options.resample?.targetRate}
-                      onChange={(e) =>
+        </CardHeader>
+        <CardContent>
+          <div>
+            {activeTab === "process" ? (
+              <FieldGroup>
+                {/* Resample */}
+                <FieldGroup>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="resample-checkbox"
+                      checked={options.resample?.enabled}
+                      onCheckedChange={(checked) =>
                         setOptions({
                           ...options,
-                          resample: { ...options.resample!, targetRate: Number(e.target.value) },
+                          resample: { ...options.resample!, enabled: Boolean(checked) },
                         })
                       }
-                      className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#7c3aed] focus:outline-none focus:ring-1 focus:ring-[#7c3aed]"
-                    >
-                      <option value={8000}>8000 Hz</option>
-                      <option value={16000}>16000 Hz (ML Standard)</option>
-                      <option value={22050}>22050 Hz</option>
-                      <option value={44100}>44100 Hz</option>
-                      <option value={48000}>48000 Hz</option>
-                    </select>
-                  </div>
-                )}
-              </div>
+                    />
+                    <FieldLabel htmlFor="resample-checkbox">Resample</FieldLabel>
+                  </Field>
+                  {options.resample?.enabled && (
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground">Target Sample Rate (Hz)</FieldLabel>
+                      <Select
+                        defaultValue={options.resample?.targetRate.toString()}
+                        onValueChange={(val) =>
+                          setOptions({
+                            ...options,
+                            resample: { ...options.resample!, targetRate: Number(val) },
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a Sample Rate (Hz)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="8000">8000 Hz</SelectItem>
+                          <SelectItem value="16000">16000 Hz (ML Standard)</SelectItem>
+                          <SelectItem value="22050">22050 Hz</SelectItem>
+                          <SelectItem value="44100">44100 Hz</SelectItem>
+                          <SelectItem value="48000">48000 Hz</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                </FieldGroup>
 
-              {/* Convert to Mono */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
+                {/* Convert to Mono */}
+                <Field orientation="horizontal">
+                  <Checkbox
+                    id="mono-checkbox"
                     checked={options.mono?.enabled}
-                    onChange={(e) =>
+                    onCheckedChange={(checked) =>
                       setOptions({
                         ...options,
-                        mono: { enabled: e.target.checked },
+                        mono: { enabled: Boolean(checked) },
                       })
                     }
-                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
                   />
-                  <span className="text-sm font-medium text-white">Convert to Mono</span>
-                </label>
-              </div>
+                  <FieldLabel htmlFor="mono-checkbox">Convert to Mono</FieldLabel>
+                </Field>
 
-              {/* Format Conversion */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={options.convert?.enabled}
-                    onChange={(e) =>
-                      setOptions({
-                        ...options,
-                        convert: { ...options.convert!, enabled: e.target.checked },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                  />
-                  <span className="text-sm font-medium text-white">Convert Format</span>
-                </label>
-                {options.convert?.enabled && (
-                  <div className="ml-6 space-y-2">
-                    <label className="block text-xs text-white/60">Target Format</label>
-                    <select
-                      value={options.convert?.format}
-                      onChange={(e) =>
+                {/* Format Conversion */}
+                <FieldGroup>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="convert-checkbox"
+                      checked={options.convert?.enabled}
+                      onCheckedChange={(checked) =>
                         setOptions({
                           ...options,
-                          convert: { ...options.convert!, format: e.target.value as any },
+                          convert: { ...options.convert!, enabled: Boolean(checked) },
                         })
                       }
-                      className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#7c3aed] focus:outline-none focus:ring-1 focus:ring-[#7c3aed]"
-                    >
-                      <option value="wav">WAV</option>
-                      <option value="mp3">MP3</option>
-                      <option value="flac">FLAC</option>
-                      <option value="ogg">OGG</option>
-                    </select>
-                  </div>
-                )}
-              </div>
-
-              {/* Normalize */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={options.normalize?.enabled}
-                    onChange={(e) =>
-                      setOptions({
-                        ...options,
-                        normalize: { ...options.normalize!, enabled: e.target.checked },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                  />
-                  <span className="text-sm font-medium text-white">Normalize Audio</span>
-                </label>
-                {options.normalize?.enabled && (
-                  <div className="ml-6 space-y-2">
-                    <label className="block text-xs text-white/60">Target Level (dB)</label>
-                    <input
-                      type="number"
-                      value={options.normalize?.targetDb}
-                      onChange={(e) =>
-                        setOptions({
-                          ...options,
-                          normalize: { ...options.normalize!, targetDb: Number(e.target.value) },
-                        })
-                      }
-                      className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#7c3aed] focus:outline-none focus:ring-1 focus:ring-[#7c3aed]"
-                      min={-60}
-                      max={0}
-                      step={0.1}
                     />
-                  </div>
-                )}
-              </div>
+                    <FieldLabel htmlFor="convert-checkbox">Convert Format</FieldLabel>
+                  </Field>
+                  {options.convert?.enabled && (
+                    <Field>
+                      <FieldLabel className="text-xs text-muted-foreground">Target Format</FieldLabel>
+                      <Select
+                        value={options.convert?.format}
+                        onValueChange={(val: "wav" | "mp3" | "flac" | "ogg") =>
+                          setOptions({
+                            ...options,
+                            convert: { ...options.convert!, format: val },
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a file format" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="wav">WAV</SelectItem>
+                          <SelectItem value="mp3">MP3</SelectItem>
+                          <SelectItem value="flac">FLAC</SelectItem>
+                          <SelectItem value="ogg">OGG</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  )}
+                </FieldGroup>
 
-              {/* Trim */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={options.trim?.enabled}
-                    onChange={(e) =>
-                      setOptions({
-                        ...options,
-                        trim: { ...options.trim!, enabled: e.target.checked },
-                      })
-                    }
-                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                  />
-                  <span className="text-sm font-medium text-white">Trim Audio</span>
-                </label>
-                {options.trim?.enabled && (
-                  <div className="ml-6 space-y-3">
-                    {filesWithTrim > 0 && (
-                      <div className="rounded border border-[#7c3aed]/30 bg-[#7c3aed]/10 p-3">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#7c3aed]" />
-                          <div className="space-y-1">
-                            <div className="text-xs font-medium text-white">
-                              {filesWithTrim} file{filesWithTrim !== 1 ? "s" : ""} have individual trim settings
-                            </div>
-                            <div className="text-[11px] text-white/60">
-                              Choose whether to use per-file trim points or apply the same trim to all files
-                            </div>
+                {/* Normalize */}
+                <FieldGroup>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="normalize-checkbox"
+                      checked={options.normalize?.enabled}
+                      onCheckedChange={(checked) =>
+                        setOptions({
+                          ...options,
+                          normalize: { ...options.normalize!, enabled: Boolean(checked) },
+                        })
+                      }
+                    />
+                    <FieldLabel htmlFor="normalize-checkbox">Normalize Audio</FieldLabel>
+                  </Field>
+                  {options.normalize?.enabled && (
+                    <Field>
+                      <FieldLabel htmlFor="normalize-audio" className="text-xs text-muted-foreground">
+                        Target Level (dB)
+                      </FieldLabel>
+                      <Input
+                        id="normalize-audio"
+                        type="number"
+                        value={options.normalize?.targetDb}
+                        onChange={(e) =>
+                          setOptions({
+                            ...options,
+                            normalize: { ...options.normalize!, targetDb: Number(e.target.value) },
+                          })
+                        }
+                        min={-60}
+                        max={0}
+                        step={0.1}
+                      />
+                    </Field>
+                  )}
+                </FieldGroup>
+
+                {/* Trim */}
+                <FieldGroup>
+                  <Field orientation="horizontal">
+                    <Checkbox
+                      id="trim-checkbox"
+                      checked={options.trim?.enabled}
+                      onCheckedChange={(checked) => {
+                        setOptions({
+                          ...options,
+                          trim: { ...options.trim!, enabled: Boolean(checked) },
+                        });
+                      }}
+                    />
+                    <FieldLabel htmlFor="trim-checkbox">Trim Audio</FieldLabel>
+                  </Field>
+                  {options.trim?.enabled && (
+                    <FieldSet>
+                      <FieldLabel>Trim options</FieldLabel>
+                      <FieldDescription className="text-xs">
+                        Choose whether to use per-file trim points or apply the same trim to all files
+                      </FieldDescription>
+                      <FieldGroup>
+                        <RadioGroup
+                          defaultValue="per-file"
+                          onValueChange={(val) => {
+                            setOptions({
+                              ...options,
+                              trim: { ...options.trim!, usePerFileTrim: val === "per-file" },
+                            });
+                          }}
+                        >
+                          <Field orientation="horizontal">
+                            <RadioGroupItem id="trim-per-file" value="per-file" />
+                            <FieldLabel htmlFor="trim-per-file">Use per-file trim settings</FieldLabel>
+                          </Field>
+                          <Field orientation="horizontal">
+                            <RadioGroupItem id="trim-batched" value="batched" />
+                            <FieldLabel htmlFor="trim-batched">Apply same trim to all files</FieldLabel>
+                          </Field>
+                        </RadioGroup>
+
+                        {!options.trim?.usePerFileTrim && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <Field>
+                              <FieldLabel htmlFor="global-start" className="text-xs text-muted-foreground">
+                                Start (s)
+                              </FieldLabel>
+                              <Input
+                                id="global-start"
+                                type="number"
+                                value={options.trim?.globalStart}
+                                onChange={(e) =>
+                                  setOptions({
+                                    ...options,
+                                    trim: { ...options.trim!, globalStart: Number(e.target.value) },
+                                  })
+                                }
+                                min={0}
+                                step={0.1}
+                              />
+                            </Field>
+                            <Field>
+                              <FieldLabel htmlFor="global-end" className="text-xs text-muted-foreground">
+                                End (s)
+                              </FieldLabel>
+                              <Input
+                                id="global-end"
+                                type="number"
+                                value={options.trim?.globalEnd}
+                                onChange={(e) =>
+                                  setOptions({
+                                    ...options,
+                                    trim: { ...options.trim!, globalEnd: Number(e.target.value) },
+                                  })
+                                }
+                                min={0}
+                                step={0.1}
+                              />
+                            </Field>
                           </div>
-                        </div>
+                        )}
+                      </FieldGroup>
+                    </FieldSet>
+                  )}
+                </FieldGroup>
+
+                {/* Progress, TODO: add shadcn progress */}
+                {(processing || aggregateProgress.successfulFiles > 0 || aggregateProgress.failedFiles > 0) && (
+                  <div className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-4">
+                    <div className="flex items-center gap-2 text-sm text-white">
+                      {processing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Processing {files.length} files...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                          Batch processing complete
+                        </>
+                      )}
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full bg-[#7c3aed] transition-all duration-300"
+                        style={{ width: `${aggregateProgress.percent}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-white/60">
+                      <span className="font-mono">{aggregateProgress.percent}%</span>
+                      <span>
+                        Queued {aggregateProgress.queuedFiles} • Running {aggregateProgress.runningFiles} • Done{" "}
+                        {aggregateProgress.successfulFiles} • Failed {aggregateProgress.failedFiles}
+                      </span>
+                    </div>
+                    {activeFile && (
+                      <div className="rounded border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
+                        {activeFile.fileName} · {activeFile.step ?? "Finalizing"}...
                       </div>
                     )}
-
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="trimMode"
-                          checked={options.trim?.usePerFileTrim}
-                          onChange={() =>
-                            setOptions({
-                              ...options,
-                              trim: { ...options.trim!, usePerFileTrim: true },
-                            })
-                          }
-                          className="h-3.5 w-3.5 border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                        />
-                        <span className="text-xs text-white">Use per-file trim settings</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="trimMode"
-                          checked={!options.trim?.usePerFileTrim}
-                          onChange={() =>
-                            setOptions({
-                              ...options,
-                              trim: { ...options.trim!, usePerFileTrim: false },
-                            })
-                          }
-                          className="h-3.5 w-3.5 border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                        />
-                        <span className="text-xs text-white">Apply same trim to all files</span>
-                      </label>
-                    </div>
-
-                    {!options.trim?.usePerFileTrim && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2">
-                          <label className="block text-xs text-white/60">Start (s)</label>
-                          <input
-                            type="number"
-                            value={options.trim?.globalStart}
-                            onChange={(e) =>
-                              setOptions({
-                                ...options,
-                                trim: { ...options.trim!, globalStart: Number(e.target.value) },
-                              })
-                            }
-                            className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#7c3aed] focus:outline-none focus:ring-1 focus:ring-[#7c3aed]"
-                            min={0}
-                            step={0.1}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs text-white/60">End (s)</label>
-                          <input
-                            type="number"
-                            value={options.trim?.globalEnd}
-                            onChange={(e) =>
-                              setOptions({
-                                ...options,
-                                trim: { ...options.trim!, globalEnd: Number(e.target.value) },
-                              })
-                            }
-                            className="w-full rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white focus:border-[#7c3aed] focus:outline-none focus:ring-1 focus:ring-[#7c3aed]"
-                            min={0}
-                            step={0.1}
-                          />
-                        </div>
+                    {failedFiles.length > 0 && (
+                      <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                        Failed: {failedFiles.map((file) => file.fileName).join(", ")}
                       </div>
                     )}
                   </div>
                 )}
-              </div>
+              </FieldGroup>
+            ) : (
+              <FieldGroup>
+                {/* Export Annotations */}
+                <FieldSet>
+                  <FieldLabel>Export Format</FieldLabel>
+                  <RadioGroup
+                    defaultValue="json"
+                    onValueChange={(val) => setExportFormat(val as "csv" | "json" | "textgrid")}
+                  >
+                    <Field orientation="horizontal">
+                      <RadioGroupItem id="format-json" value="json" />
+                      <FieldLabel htmlFor="format-json">
+                        JSON{" "}
+                        <span className="text-xs text-muted-foreground">(Standard JSON format with timestamps)</span>
+                      </FieldLabel>
+                    </Field>
+                    <Field orientation="horizontal">
+                      <RadioGroupItem id="format-csv" value="csv" />
+                      <FieldLabel htmlFor="format-csv">
+                        CSV{" "}
+                        <span className="text-xs text-muted-foreground">(Comma-separated values for spreadsheets)</span>
+                      </FieldLabel>
+                    </Field>
+                    <Field orientation="horizontal">
+                      <RadioGroupItem id="format-textgrid" value="textgrid" />
+                      <FieldLabel htmlFor="format-textgrid">
+                        TextGrid{" "}
+                        <span className="text-xs text-muted-foreground">(Praat-compatible annotation format)</span>
+                      </FieldLabel>
+                    </Field>
+                  </RadioGroup>
+                </FieldSet>
 
-              {/* Progress */}
-              {processing && (
-                <div className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-center gap-2 text-sm text-white">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Processing {files.length} files...
+                {/* Stats */}
+                <div className="space-y-2 p-4">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Files</span>
+                    <span className="font-mono">{files.length}</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full bg-[#7c3aed] transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    />
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Annotations</span>
+                    <span className="font-mono">{annotations.length}</span>
                   </div>
-                  <div className="text-right font-mono text-xs text-white/60">{progress}%</div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Annotated Files</span>
+                    <span className="font-mono">{new Set(annotations.map((a) => a.fileId)).size}</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Export Annotations */}
-              <div className="space-y-3">
-                <h3 className="text-sm font-medium text-white">Export Format</h3>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2.5">
-                    <input
-                      type="radio"
-                      name="format"
-                      checked={exportFormat === "json"}
-                      onChange={() => setExportFormat("json")}
-                      className="h-4 w-4 border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                    />
-                    <div>
-                      <div className="text-sm text-white">JSON</div>
-                      <div className="text-xs text-white/50">Standard JSON format with timestamps</div>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-2.5">
-                    <input
-                      type="radio"
-                      name="format"
-                      checked={exportFormat === "csv"}
-                      onChange={() => setExportFormat("csv")}
-                      className="h-4 w-4 border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                    />
-                    <div>
-                      <div className="text-sm text-white">CSV</div>
-                      <div className="text-xs text-white/50">Comma-separated values for spreadsheets</div>
-                    </div>
-                  </label>
-                  <label className="flex items-center gap-2.5">
-                    <input
-                      type="radio"
-                      name="format"
-                      checked={exportFormat === "textgrid"}
-                      onChange={() => setExportFormat("textgrid")}
-                      className="h-4 w-4 border-white/10 bg-white/5 text-[#7c3aed] focus:ring-[#7c3aed] focus:ring-offset-0"
-                    />
-                    <div>
-                      <div className="text-sm text-white">TextGrid</div>
-                      <div className="text-xs text-white/50">Praat-compatible annotation format</div>
-                    </div>
-                  </label>
-                </div>
-              </div>
 
-              {/* Stats */}
-              <div className="space-y-2 rounded-lg border border-white/10 bg-white/5 p-4">
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/60">Total Files</span>
-                  <span className="font-mono text-white">{files.length}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/60">Total Annotations</span>
-                  <span className="font-mono text-white">{annotations.length}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-white/60">Annotated Files</span>
-                  <span className="font-mono text-white">{new Set(annotations.map((a) => a.fileId)).size}</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleExportAnnotations}
-                className="flex w-full items-center justify-center gap-2 rounded bg-[#7c3aed] px-4 py-2.5 text-sm font-medium text-white shadow-lg shadow-[#7c3aed]/20 hover:bg-[#6d28d9]"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Export Annotations
-              </button>
-            </div>
-          )}
-        </div>
+                <Button onClick={handleExportAnnotations} disabled={!(files.length > 0 && annotations.length > 0)}>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Export Annotations
+                </Button>
+              </FieldGroup>
+            )}
+          </div>
+        </CardContent>
 
         {/* Footer */}
         {activeTab === "process" && (
-          <div className="flex items-center justify-between border-t border-white/5 p-4">
-            <div className="text-xs text-white/50">
+          <CardFooter className="flex items-center justify-between">
+            <div className="text-xs text-muted-foreground">
               {Object.values(options).filter((o) => o.enabled).length} operation(s) selected
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={onClose}
-                className="rounded px-4 py-2 text-sm font-medium text-white/60 hover:bg-white/5 hover:text-white"
-              >
-                Cancel
-              </button>
-              <button
+              <Button variant="ghost" onClick={handleCancelProcessing}>
+                {processing ? "Stop" : "Cancel"}
+              </Button>
+              <Button
+                variant="default"
                 onClick={handleProcess}
                 disabled={processing || !Object.values(options).some((o) => o.enabled)}
-                className="flex items-center gap-2 rounded bg-[#7c3aed] px-4 py-2 text-sm font-medium text-white shadow-lg shadow-[#7c3aed]/20 hover:bg-[#6d28d9] disabled:opacity-50"
               >
                 <Play className="h-3.5 w-3.5" />
                 Process Files
-              </button>
+              </Button>
             </div>
-          </div>
+          </CardFooter>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

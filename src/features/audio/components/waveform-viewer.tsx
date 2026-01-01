@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { useCanvas, useWaveformData, useWaveformInteraction } from "@/features/audio/hooks";
+import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 import {
   drawAnnotations,
   drawBackground,
@@ -14,7 +15,6 @@ import {
   drawWaveform,
   type ViewState,
 } from "@/features/audio/types/waveform-drawing";
-import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 
 export function WaveformViewer() {
   const containerRef = useRef<HTMLDivElement>(null);

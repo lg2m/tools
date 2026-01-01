@@ -1,14 +1,13 @@
-import { useTransition } from "react";
-
 import { createFileRoute } from "@tanstack/react-router";
+import { useTransition } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { AudioAnnotatorShell } from "@/features/audio/components/audio-annotator-shell";
 import { useAudioAnnotatorState } from "@/features/audio/hooks/use-audio-annotator-state";
 import { useAudioPlayback } from "@/features/audio/hooks/use-audio-playback";
 import { useHotkeys } from "@/features/audio/hooks/use-hotkeys";
-import type { Annotation } from "@/features/audio/types";
 import { useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
+import type { Annotation } from "@/features/audio/types";
 
 export const Route = createFileRoute("/audio")({
   component: AudioAnnotatorComponent,
