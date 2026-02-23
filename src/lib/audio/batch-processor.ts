@@ -190,7 +190,7 @@ async function decodeAudio(file: AudioFile, signal?: AbortSignal): Promise<Audio
   }
 }
 
-function getTrimRangeSeconds(
+export function getTrimRangeSeconds(
   file: AudioFile,
   options: ProcessingOptions["trim"],
   duration: number,
@@ -212,6 +212,30 @@ function getTrimRangeSeconds(
   return { start, end };
 }
 
+export function downmixChannelsToMono(channels: readonly Float32Array[]): Float32Array {
+  if (channels.length === 0) {
+    throw new Error("Cannot downmix audio without channels");
+  }
+
+  const length = channels[0].length;
+  for (let channelIndex = 1; channelIndex < channels.length; channelIndex++) {
+    if (channels[channelIndex].length !== length) {
+      throw new Error("Cannot downmix channels with different lengths");
+    }
+  }
+
+  const mono = new Float32Array(length);
+  for (let sampleIndex = 0; sampleIndex < length; sampleIndex++) {
+    let sum = 0;
+    for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
+      sum += channels[channelIndex][sampleIndex];
+    }
+    mono[sampleIndex] = sum / channels.length;
+  }
+
+  return mono;
+}
+
 function trimAudioBuffer(audioBuffer: AudioBuffer, startSeconds: number, endSeconds: number): AudioBuffer {
   const startFrame = Math.floor(startSeconds * audioBuffer.sampleRate);
   const endFrame = Math.ceil(endSeconds * audioBuffer.sampleRate);
@@ -228,6 +252,26 @@ function trimAudioBuffer(audioBuffer: AudioBuffer, startSeconds: number, endSeco
   }
 
   return trimmed;
+}
+
+function convertToMono(audioBuffer: AudioBuffer, signal?: AbortSignal): AudioBuffer {
+  if (audioBuffer.numberOfChannels === 1) return audioBuffer;
+
+  const mono = new AudioBuffer({
+    numberOfChannels: 1,
+    length: audioBuffer.length,
+    sampleRate: audioBuffer.sampleRate,
+  });
+  const channelData = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) =>
+    audioBuffer.getChannelData(index),
+  );
+  for (let sampleIndex = 0; sampleIndex < audioBuffer.length; sampleIndex += 16384) {
+    throwIfAborted(signal);
+  }
+
+  mono.getChannelData(0).set(downmixChannelsToMono(channelData));
+
+  return mono;
 }
 
 function encodeWav(audioBuffer: AudioBuffer): Blob {
@@ -283,25 +327,17 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-async function processTrimStep(
-  file: AudioFile,
-  options: ProcessingOptions["trim"],
-  signal?: AbortSignal,
-): Promise<ProcessedAudioOutput> {
-  const decoded = await decodeAudio(file, signal);
-  const { start, end } = getTrimRangeSeconds(file, options, decoded.duration);
-  const trimmed = trimAudioBuffer(decoded, start, end);
-  const blob = encodeWav(trimmed);
-
+function buildWavOutput(file: AudioFile, processedBuffer: AudioBuffer): ProcessedAudioOutput {
+  const blob = encodeWav(processedBuffer);
   return {
     fileId: file.id,
     fileName: replaceExtension(file.name, "wav"),
     blob,
     mimeType: "audio/wav",
     format: "wav",
-    duration: trimmed.duration,
-    sampleRate: trimmed.sampleRate,
-    channels: trimmed.numberOfChannels,
+    duration: processedBuffer.duration,
+    sampleRate: processedBuffer.sampleRate,
+    channels: processedBuffer.numberOfChannels,
   };
 }
 
@@ -370,6 +406,13 @@ export async function* processAudioBatch(
 
   for (const file of files) {
     let completedForCurrentFile = 0;
+    let workingBuffer: AudioBuffer | null = null;
+
+    const ensureWorkingBuffer = async (): Promise<AudioBuffer> => {
+      if (workingBuffer) return workingBuffer;
+      workingBuffer = await decodeAudio(file, signal);
+      return workingBuffer;
+    };
 
     try {
       throwIfAborted(signal);
@@ -395,8 +438,12 @@ export async function* processAudioBatch(
         yield emit(file.id);
 
         if (step === "trim") {
-          const output = await processTrimStep(file, options.trim, signal);
-          outputs.set(file.id, output);
+          const decoded = await ensureWorkingBuffer();
+          const { start, end } = getTrimRangeSeconds(file, options.trim, decoded.duration);
+          workingBuffer = trimAudioBuffer(decoded, start, end);
+        } else if (step === "mono") {
+          const decoded = await ensureWorkingBuffer();
+          workingBuffer = convertToMono(decoded, signal);
         } else {
           await sleep(stepDelayMs, signal);
         }
@@ -404,6 +451,10 @@ export async function* processAudioBatch(
         completedUnits += 1;
         completedForCurrentFile += 1;
         yield emit(file.id);
+      }
+
+      if (workingBuffer) {
+        outputs.set(file.id, buildWavOutput(file, workingBuffer));
       }
 
       state.status = "success";
