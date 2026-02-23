@@ -19,6 +19,39 @@ interface BatchProcessorProps {
   onClose: () => void;
 }
 
+interface ProcessCallbacks {
+  onProgress: (aggregate: AggregateProgress) => void;
+  onFileUpdate: (file: FileProcessingState) => void;
+  onActiveFile: (file: FileProcessingState | null) => void;
+  onComplete: () => void;
+}
+
+async function runBatchProcess(
+  files: AudioFile[],
+  options: ProcessingOptions,
+  signal: AbortSignal,
+  callbacks: ProcessCallbacks,
+): Promise<void> {
+  const { onProgress, onFileUpdate, onActiveFile, onComplete } = callbacks;
+  try {
+    const iterator = processAudioBatch(files, options, { signal })[Symbol.asyncIterator]();
+    let result = await iterator.next();
+    while (!result.done) {
+      const update = result.value;
+      onProgress(update.aggregate);
+      onFileUpdate(update.file);
+      if (update.file.status === "running") {
+        onActiveFile(update.file);
+      }
+      result = await iterator.next();
+    }
+    onComplete();
+  } catch {
+    // Error handling is done via file statuses
+    onComplete();
+  }
+}
+
 export function BatchProcessor({ files, annotations, onClose }: BatchProcessorProps) {
   const [activeTab, setActiveTab] = useState<"process" | "export">("process");
   const [options, setOptions] = useState<ProcessingOptions>({
@@ -44,7 +77,13 @@ export function BatchProcessor({ files, annotations, onClose }: BatchProcessorPr
 
   const failedFiles = Object.values(fileStatuses).filter((status) => status.status === "failed");
 
-  const handleProcess = async () => {
+  const cleanupProcessing = () => {
+    setProcessing(false);
+    abortControllerRef.current = null;
+    setActiveFile(null);
+  };
+
+  const handleProcess = () => {
     if (processing) return;
 
     const controller = new AbortController();
@@ -66,21 +105,12 @@ export function BatchProcessor({ files, annotations, onClose }: BatchProcessorPr
     );
     setActiveFile(null);
 
-    try {
-      for await (const update of processAudioBatch(files, options, { signal: controller.signal })) {
-        setAggregateProgress(update.aggregate);
-        setFileStatuses((prev) => ({ ...prev, [update.file.fileId]: update.file }));
-        if (update.file.status === "running") {
-          setActiveFile(update.file);
-        }
-      }
-    } catch {
-      // Error handling is done via file statuses
-    } finally {
-      setProcessing(false);
-      abortControllerRef.current = null;
-      setActiveFile(null);
-    }
+    runBatchProcess(files, options, controller.signal, {
+      onProgress: setAggregateProgress,
+      onFileUpdate: (file) => setFileStatuses((prev) => ({ ...prev, [file.fileId]: file })),
+      onActiveFile: setActiveFile,
+      onComplete: cleanupProcessing,
+    });
   };
 
   const handleCancelProcessing = () => {
