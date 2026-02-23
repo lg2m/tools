@@ -7,6 +7,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import { useAudioDomainStore } from "@/store/audio";
 import type { AudioFile } from "@/types/audio";
@@ -177,8 +178,13 @@ export function FileManager() {
   const [expandedTrimId, setExpandedTrimId] = useState<string | null>(null);
 
   const handleFileUpload = useCallback(
-    (newFiles: File[]) => {
+    (newFiles: File[], source: "input" | "drop") => {
       addFiles(newFiles.map(createAudioFile));
+
+      trackEvent("audio_files_added", {
+        source,
+        file_count: newFiles.length,
+      });
     },
     [addFiles],
   );
@@ -187,7 +193,7 @@ export function FileManager() {
     (e: React.DragEvent) => {
       e.preventDefault();
       const audioFiles = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("audio/"));
-      if (audioFiles.length > 0) handleFileUpload(audioFiles);
+      if (audioFiles.length > 0) handleFileUpload(audioFiles, "drop");
     },
     [handleFileUpload],
   );
@@ -217,7 +223,7 @@ export function FileManager() {
           accept="audio/*"
           multiple
           className="hidden"
-          onChange={(e) => e.target.files && handleFileUpload(Array.from(e.target.files))}
+          onChange={(e) => e.target.files && handleFileUpload(Array.from(e.target.files), "input")}
         />
       </div>
 
@@ -240,7 +246,10 @@ export function FileManager() {
                 isSelected={index === currentFileIndex}
                 isExpanded={expandedTrimId === file.id}
                 onSelect={() => selectFile(index)}
-                onRemove={() => removeFile(file.id)}
+                onRemove={() => {
+                  removeFile(file.id);
+                  trackEvent("audio_file_removed");
+                }}
                 onToggleTrim={() => toggleTrim(file.id)}
                 onTrimUpdate={handleTrimUpdate}
               />

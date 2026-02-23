@@ -3,8 +3,15 @@ import { pluginBabel } from "@rsbuild/plugin-babel";
 import { pluginReact } from "@rsbuild/plugin-react";
 import { tanstackRouter } from "@tanstack/router-plugin/rspack";
 
+import packageJson from "./package.json";
+
 // Docs: https://rsbuild.rs/config/
 export default defineConfig({
+  source: {
+    define: {
+      __APP_VERSION__: JSON.stringify(packageJson.version),
+    },
+  },
   plugins: [
     pluginReact(),
     pluginBabel({

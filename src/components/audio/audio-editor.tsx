@@ -16,6 +16,7 @@ import { AUDIO_HOTKEY_TIP, AUDIO_HOTKEYS } from "@/config/hotkeys";
 import { useAudioAnnotatorState } from "@/hooks/use-audio-annotator-state";
 import { useAudioPlayback } from "@/hooks/use-audio-playback";
 import { useHotkeys } from "@/hooks/use-hotkeys";
+import { trackEvent } from "@/lib/analytics";
 import { useAudioDomainStore, useAudioUiStore } from "@/store/audio";
 import type { Annotation } from "@/types/audio";
 
@@ -123,6 +124,11 @@ export function AudioEditor() {
     setLastUsedLabel(labelId);
     setPendingSelection(null);
     setSelectedAnnotation(annotation.id);
+
+    trackEvent("annotation_added", {
+      label_id: labelId,
+      duration_ms: Math.round((annotation.endTime - annotation.startTime) * 1000),
+    });
   };
 
   const handleChangeAnnotationLabel = (annotationId: string, labelId: string) => {
@@ -138,6 +144,7 @@ export function AudioEditor() {
   const handleDeleteAnnotation = (annotationId: string) => {
     removeAnnotation(annotationId);
     setSelectedAnnotation(null);
+    trackEvent("annotation_deleted");
   };
 
   const handleZoomChange = (newZoom: number) => {
@@ -162,7 +169,12 @@ export function AudioEditor() {
         type: "action" as const,
         id: "batch",
         label: "Process & Export",
-        onClick: toggleBatchProcessor,
+        onClick: () => {
+          toggleBatchProcessor();
+          trackEvent("batch_processor_opened", {
+            file_count: files.length,
+          });
+        },
         disabled: !hasFiles,
       },
       { type: "separator" as const, id: "sep1" },
@@ -190,7 +202,7 @@ export function AudioEditor() {
         onClick: () => toggleHotkeys(),
       },
     ],
-    [mode, viewMode, hasFiles, setMode, setViewMode, toggleBatchProcessor, toggleHotkeys],
+    [mode, viewMode, hasFiles, files.length, setMode, setViewMode, toggleBatchProcessor, toggleHotkeys],
   );
 
   return (

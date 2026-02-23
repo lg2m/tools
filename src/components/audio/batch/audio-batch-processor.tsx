@@ -5,6 +5,7 @@ import { type AnnotationExportFormat, AnnotationExportTab } from "@/components/a
 import { AudioProcessingTab } from "@/components/audio/batch/audio-processing-tab";
 import { BatchProcessorDialog } from "@/components/batch/batch-processor-dialog";
 import { Button } from "@/components/ui/button";
+import { trackEvent } from "@/lib/analytics";
 import {
   type AggregateProgress,
   createDefaultProcessingOptions,
@@ -187,6 +188,11 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
   const handleProcess = () => {
     if (processing) return;
 
+    trackEvent("batch_process_started", {
+      file_count: files.length,
+      selected_operations: selectedOperationCount,
+    });
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -202,6 +208,10 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
       onActiveFile: (file) => dispatchProcessing({ type: "set-active-file", file }),
       onComplete: async (outputs) => {
         try {
+          trackEvent("batch_process_completed", {
+            output_count: outputs.length,
+          });
+
           if (outputs.length === 1) {
             const [output] = outputs;
             downloadBlob(output.blob, output.fileName);
@@ -227,16 +237,28 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
     }));
 
     if (exportFormat === "json") {
+      trackEvent("annotations_exported", {
+        format: exportFormat,
+        annotation_count: annotations.length,
+      });
       downloadContent(JSON.stringify(data, null, 2), "annotations.json", "application/json");
       return;
     }
 
     if (exportFormat === "csv") {
+      trackEvent("annotations_exported", {
+        format: exportFormat,
+        annotation_count: annotations.length,
+      });
       const content = `file,start,end,label\n${data.map((item) => `${item.file},${item.start},${item.end},${item.label}`).join("\n")}`;
       downloadContent(content, "annotations.csv", "text/csv");
       return;
     }
 
+    trackEvent("annotations_exported", {
+      format: exportFormat,
+      annotation_count: annotations.length,
+    });
     const textGrid = data.map((item) => `"${item.file}" ${item.start} ${item.end} "${item.label}"`).join("\n");
     downloadContent(textGrid, "annotations.TextGrid");
   };

@@ -1,9 +1,10 @@
-import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { createRootRoute, HeadContent, Outlet, Scripts, useLocation } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import * as React from "react";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { trackEvent } from "@/lib/analytics";
 import { seo } from "@/lib/seo";
 
 export const Route = createRootRoute({
@@ -26,6 +27,15 @@ export const Route = createRootRoute({
 });
 
 function RootComponent() {
+  const location = useLocation();
+
+  React.useEffect(() => {
+    trackEvent("$pageview", {
+      path: location.pathname,
+      search: location.searchStr,
+    });
+  }, [location.pathname, location.searchStr]);
+
   return (
     <React.Fragment>
       <HeadContent />
