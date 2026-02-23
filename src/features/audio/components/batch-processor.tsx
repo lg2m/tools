@@ -1,18 +1,17 @@
-import { useState, useRef } from "react";
+import { SelectValue } from "@radix-ui/react-select";
 
 import { CheckCircle2, Loader2, Play, X } from "lucide-react";
-
-import type { Annotation, AudioFile } from "@/features/audio/types";
-import type { AggregateProgress, FileProcessingState, ProcessingOptions } from "@/features/audio/batch/processor";
-import { processAudioBatch } from "@/features/audio/batch/processor";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
-import { SelectValue } from "@radix-ui/react-select";
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
-import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import type { AggregateProgress, FileProcessingState, ProcessingOptions } from "@/features/audio/batch/processor";
+import { processAudioBatch } from "@/features/audio/batch/processor";
+import type { Annotation, AudioFile } from "@/features/audio/types";
 
 interface BatchProcessorProps {
   files: AudioFile[];
@@ -75,6 +74,8 @@ export function BatchProcessor({ files, annotations, onClose }: BatchProcessorPr
           setActiveFile(update.file);
         }
       }
+    } catch {
+      // Error handling is done via file statuses
     } finally {
       setProcessing(false);
       abortControllerRef.current = null;
