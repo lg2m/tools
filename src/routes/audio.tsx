@@ -1,14 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { AudioEditor } from "@/components/audio/audio-editor";
+import { seo } from "@/lib/seo";
 
 export const Route = createFileRoute("/audio")({
   component: AudioAnnotatorComponent,
   head: () => ({
     meta: [
-      {
-        title: "Audio Tools | tools.zmeyer.dev",
-      },
+      ...seo({
+        title: "Audio Editor | tools.zmeyer.dev",
+        description: "Audio data processing tools, client-side only.",
+      }),
+
     ],
   }),
 });
