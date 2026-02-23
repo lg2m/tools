@@ -63,7 +63,7 @@ export function TransportControls({
   onZoomChange,
 }: TransportControlsProps) {
   const wasPlayingRef = useRef(false);
-  const isDraggingRef = useRef(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const sliderWrapRef = useRef<HTMLDivElement | null>(null);
   const [sliderPx, setSliderPx] = useState(600);
@@ -89,8 +89,8 @@ export function TransportControls({
   const displayDecimals = useMemo(() => {
     // when dragging/scrubbing, show one extra digit if possible.
     const base = getTimeDecimalsFromSecPerPx(secPerPx);
-    return isDraggingRef.current ? clamp(base + 1, 0, 3) : base;
-  }, [secPerPx]); // currentTime to refresh while dragging
+    return isDragging ? clamp(base + 1, 0, 3) : base;
+  }, [secPerPx, isDragging]);
 
   const baseSeekStep = useMemo(() => {
     // slider step ~ 1px of time, clamped.
@@ -163,12 +163,12 @@ export function TransportControls({
                 onSeek(vals[0]);
               }}
               onPointerDown={() => {
-                isDraggingRef.current = true;
+                setIsDragging(true);
                 wasPlayingRef.current = isPlaying;
                 if (isPlaying) onPlayPause(); // stop while scrubbing
               }}
               onPointerUp={() => {
-                isDraggingRef.current = false;
+                setIsDragging(false);
                 if (wasPlayingRef.current) onPlayPause();
               }}
               className="h-4 cursor-pointer"
