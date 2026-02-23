@@ -1,7 +1,6 @@
+export { useCanvas } from "@/hooks/use-canvas";
 export { useAudioAnnotatorState } from "./use-audio-annotator-state";
 export { useAudioPlayback } from "./use-audio-playback";
-export { useCanvas } from "./use-canvas";
-export { useDragInteraction } from "./use-drag-interaction";
 export { useHotkeys } from "./use-hotkeys";
 export { usePanInteraction } from "./use-pan-interaction";
 export { useSpectrogramData } from "./use-spectrogram-data";
