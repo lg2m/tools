@@ -236,6 +236,37 @@ export function downmixChannelsToMono(channels: readonly Float32Array[]): Float3
   return mono;
 }
 
+export function computePeakNormalizationGain(targetDb: number, peakAmplitude: number): number {
+  if (!Number.isFinite(targetDb)) {
+    throw new Error("Normalization target must be a finite dB value");
+  }
+
+  if (peakAmplitude < 0 || !Number.isFinite(peakAmplitude)) {
+    throw new Error("Peak amplitude must be a finite positive number");
+  }
+
+  if (peakAmplitude === 0) return 1;
+
+  const targetAmplitude = 10 ** (targetDb / 20);
+  return targetAmplitude / peakAmplitude;
+}
+
+export function getPeakAmplitude(channels: readonly Float32Array[]): number {
+  if (channels.length === 0) {
+    throw new Error("Cannot measure peak amplitude without channels");
+  }
+
+  let peak = 0;
+  for (const channel of channels) {
+    for (let sampleIndex = 0; sampleIndex < channel.length; sampleIndex++) {
+      const magnitude = Math.abs(channel[sampleIndex]);
+      if (magnitude > peak) peak = magnitude;
+    }
+  }
+
+  return peak;
+}
+
 function trimAudioBuffer(audioBuffer: AudioBuffer, startSeconds: number, endSeconds: number): AudioBuffer {
   const startFrame = Math.floor(startSeconds * audioBuffer.sampleRate);
   const endFrame = Math.ceil(endSeconds * audioBuffer.sampleRate);
@@ -272,6 +303,37 @@ function convertToMono(audioBuffer: AudioBuffer, signal?: AbortSignal): AudioBuf
   mono.getChannelData(0).set(downmixChannelsToMono(channelData));
 
   return mono;
+}
+
+function normalizeAudioBuffer(audioBuffer: AudioBuffer, targetDb: number, signal?: AbortSignal): AudioBuffer {
+  const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) =>
+    audioBuffer.getChannelData(index),
+  );
+  const peakAmplitude = getPeakAmplitude(channels);
+  const gain = computePeakNormalizationGain(targetDb, peakAmplitude);
+
+  if (gain === 1) return audioBuffer;
+
+  const normalized = new AudioBuffer({
+    numberOfChannels: audioBuffer.numberOfChannels,
+    length: audioBuffer.length,
+    sampleRate: audioBuffer.sampleRate,
+  });
+
+  for (let channelIndex = 0; channelIndex < audioBuffer.numberOfChannels; channelIndex++) {
+    const source = audioBuffer.getChannelData(channelIndex);
+    const destination = normalized.getChannelData(channelIndex);
+
+    for (let sampleIndex = 0; sampleIndex < source.length; sampleIndex++) {
+      if (sampleIndex % 16384 === 0) {
+        throwIfAborted(signal);
+      }
+
+      destination[sampleIndex] = source[sampleIndex] * gain;
+    }
+  }
+
+  return normalized;
 }
 
 function encodeWav(audioBuffer: AudioBuffer): Blob {
@@ -444,6 +506,9 @@ export async function* processAudioBatch(
         } else if (step === "mono") {
           const decoded = await ensureWorkingBuffer();
           workingBuffer = convertToMono(decoded, signal);
+        } else if (step === "normalize") {
+          const decoded = await ensureWorkingBuffer();
+          workingBuffer = normalizeAudioBuffer(decoded, options.normalize.targetDb, signal);
         } else {
           await sleep(stepDelayMs, signal);
         }
