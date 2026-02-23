@@ -3,6 +3,7 @@ import { useShallow } from "zustand/shallow";
 import { type Selection, useAudioDomainStore, useAudioUiStore } from "@/features/audio/store";
 import type { Annotation } from "@/features/audio/types";
 import { timeToX, type ViewState, xToTime } from "@/features/audio/types/waveform-drawing";
+import { usePanInteraction } from "./use-pan-interaction";
 
 type DragMode = "none" | "create" | "move" | "resize-start" | "resize-end" | "pan";
 
@@ -10,6 +11,15 @@ interface HitTarget {
   type: DragMode;
   annotationId?: string;
 }
+
+const CURSOR_MAP: Record<DragMode, string> = {
+  "resize-start": "ew-resize",
+  "resize-end": "ew-resize",
+  move: "grab",
+  create: "crosshair",
+  pan: "grabbing",
+  none: "crosshair",
+};
 
 interface UseWaveformInteractionProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -46,17 +56,38 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
 
   const currentFile = useAudioDomainStore((s) => s.files[s.currentFileIndex]);
 
+  // Pan interaction hook
+  const { handlePanStart, handlePanMove } = usePanInteraction({ view, setPanOffset });
+
   // Drag state
   const [dragMode, setDragMode] = useState<DragMode>("none");
   const [dragCurrentX, setDragCurrentX] = useState<number | null>(null);
   const dragStartX = useRef<number | null>(null);
   const dragInitialValue = useRef<Selection | null>(null);
-  const panStartRef = useRef({ x: 0, offset: 0 });
 
   // Cursor
   const [cursorStyle, setCursorStyle] = useState("crosshair");
 
   const isDragging = dragMode !== "none";
+
+  // Helper to get selection from annotation ID
+  const getSelectionFromAnnotation = useCallback(
+    (id: string | undefined): Selection | null => {
+      if (!id) return null;
+      const ann = annotations.find((a) => a.id === id);
+      return ann ? { startTime: ann.startTime, endTime: ann.endTime } : null;
+    },
+    [annotations],
+  );
+
+  // Reset drag state helper
+  const resetDragState = useCallback(() => {
+    setDragMode("none");
+    dragStartX.current = null;
+    setDragCurrentX(null);
+    dragInitialValue.current = null;
+    setCursorStyle("crosshair");
+  }, []);
 
   // Hit detection
   const getHitTarget = useCallback(
@@ -133,7 +164,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
       if (e.button === 1) {
         e.preventDefault();
         startDrag("pan", e.clientX);
-        panStartRef.current = { x: e.clientX, offset: view.panOffset };
+        handlePanStart(e.clientX);
         setCursorStyle("grabbing");
         return;
       }
@@ -143,12 +174,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
       const hitTarget = getHitTarget(x, width);
 
       if (hitTarget.type === "resize-start" || hitTarget.type === "resize-end") {
-        const initialSelection =
-          pendingSelection ??
-          (() => {
-            const annotation = annotations.find((a) => a.id === hitTarget.annotationId);
-            return annotation ? { startTime: annotation.startTime, endTime: annotation.endTime } : null;
-          })();
+        const initialSelection = pendingSelection ?? getSelectionFromAnnotation(hitTarget.annotationId);
 
         if (initialSelection) {
           startDrag(hitTarget.type, x, initialSelection);
@@ -159,10 +185,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
         }
       } else if (hitTarget.type === "move") {
         const initialSelection = hitTarget.annotationId
-          ? (() => {
-              const annotation = annotations.find((a) => a.id === hitTarget.annotationId);
-              return annotation ? { startTime: annotation.startTime, endTime: annotation.endTime } : null;
-            })()
+          ? getSelectionFromAnnotation(hitTarget.annotationId)
           : pendingSelection;
 
         if (initialSelection) {
@@ -182,11 +205,11 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
     },
     [
       containerRef,
-      view,
       getHitTarget,
       pendingSelection,
-      annotations,
+      getSelectionFromAnnotation,
       startDrag,
+      handlePanStart,
       setSelectedAnnotation,
       setPendingSelection,
     ],
@@ -203,13 +226,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
 
       // Handle pan
       if (dragMode === "pan") {
-        const dx = e.clientX - panStartRef.current.x;
-        const panDelta = (dx / width) * (view.duration / view.zoom);
-        const newOffset = Math.max(
-          0,
-          Math.min(view.duration - view.duration / view.zoom, panStartRef.current.offset - panDelta),
-        );
-        setPanOffset(newOffset);
+        handlePanMove(e.clientX, width);
         return;
       }
 
@@ -272,17 +289,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
 
       // Update cursor when not dragging
       const hitTarget = getHitTarget(x, width);
-      switch (hitTarget.type) {
-        case "resize-start":
-        case "resize-end":
-          setCursorStyle("ew-resize");
-          break;
-        case "move":
-          setCursorStyle("grab");
-          break;
-        default:
-          setCursorStyle("crosshair");
-      }
+      setCursorStyle(hitTarget.type === "move" ? "grab" : CURSOR_MAP[hitTarget.type]);
     },
     [
       containerRef,
@@ -291,7 +298,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
       view,
       selectedAnnotationId,
       getHitTarget,
-      setPanOffset,
+      handlePanMove,
       updateAnnotation,
       setPendingSelection,
     ],
@@ -305,10 +312,7 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
     const width = rect.width;
 
     if (dragMode === "pan") {
-      setDragMode("none");
-      dragStartX.current = null;
-      setDragCurrentX(null);
-      setCursorStyle("crosshair");
+      resetDragState();
       return;
     }
 
@@ -327,23 +331,17 @@ export function useWaveformInteraction({ containerRef, annotations, view }: UseW
       }
     }
 
-    setDragMode("none");
-    dragStartX.current = null;
-    setDragCurrentX(null);
-    dragInitialValue.current = null;
-    setCursorStyle("crosshair");
-  }, [containerRef, dragMode, dragCurrentX, view, mode, currentFile, patchFile, setPendingSelection]);
+    resetDragState();
+  }, [containerRef, dragMode, dragCurrentX, view, mode, currentFile, patchFile, setPendingSelection, resetDragState]);
 
   // Handle mouse leave
   const handleMouseLeave = useCallback(() => {
     if (isDragging) {
-      setDragMode("none");
-      dragStartX.current = null;
-      setDragCurrentX(null);
-      dragInitialValue.current = null;
+      resetDragState();
+    } else {
+      setCursorStyle("crosshair");
     }
-    setCursorStyle("crosshair");
-  }, [isDragging]);
+  }, [isDragging, resetDragState]);
 
   // Handle wheel (zoom)
   const handleWheel = useCallback(
