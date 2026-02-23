@@ -57,6 +57,52 @@ export function drawGrid(dc: DrawContext, waveformHeight: number): void {
   }
 }
 
+// Shared region drawing primitives
+interface RegionBounds {
+  startX: number;
+  endX: number;
+  height: number;
+}
+
+function drawRegionFill(dc: DrawContext, bounds: RegionBounds, color: string): void {
+  dc.ctx.fillStyle = color;
+  dc.ctx.fillRect(bounds.startX, 0, bounds.endX - bounds.startX, bounds.height);
+}
+
+function drawRegionBorder(
+  dc: DrawContext,
+  bounds: RegionBounds,
+  color: string,
+  options: { dashed?: boolean; lineWidth?: number } = {},
+): void {
+  const { dashed = false, lineWidth = 1 } = options;
+  dc.ctx.strokeStyle = color;
+  dc.ctx.lineWidth = lineWidth;
+  if (dashed) dc.ctx.setLineDash([4, 4]);
+  dc.ctx.strokeRect(bounds.startX, 0, bounds.endX - bounds.startX, bounds.height);
+  if (dashed) dc.ctx.setLineDash([]);
+}
+
+function drawResizeHandles(dc: DrawContext, bounds: RegionBounds, color: string): void {
+  dc.ctx.fillStyle = color;
+  dc.ctx.fillRect(bounds.startX - 3, bounds.height / 2 - 12, 6, 24);
+  dc.ctx.fillRect(bounds.endX - 3, bounds.height / 2 - 12, 6, 24);
+}
+
+function drawRegionLabel(
+  dc: DrawContext,
+  text: string,
+  x: number,
+  color: string,
+  align: CanvasTextAlign = "left",
+): void {
+  dc.ctx.fillStyle = color;
+  dc.ctx.font = "11px sans-serif";
+  dc.ctx.textAlign = align;
+  dc.ctx.fillText(text, x, 14);
+  if (align !== "left") dc.ctx.textAlign = "left";
+}
+
 export function drawWaveform(dc: DrawContext, samples: Float32Array, view: ViewState, waveformHeight: number): void {
   const { ctx, width } = dc;
   const { panOffset, duration, zoom } = view;
@@ -97,6 +143,16 @@ export function drawWaveform(dc: DrawContext, samples: Float32Array, view: ViewS
   }
 }
 
+function drawVerticalLine(dc: DrawContext, x: number, height: number, color: string, lineWidth: number): void {
+  if (x < 0 || x > dc.width) return;
+  dc.ctx.strokeStyle = color;
+  dc.ctx.lineWidth = lineWidth;
+  dc.ctx.beginPath();
+  dc.ctx.moveTo(x, 0);
+  dc.ctx.lineTo(x, height);
+  dc.ctx.stroke();
+}
+
 export function drawTrimRegion(
   dc: DrawContext,
   trimStart: number,
@@ -104,45 +160,30 @@ export function drawTrimRegion(
   view: ViewState,
   waveformHeight: number,
 ): void {
-  const { ctx, width } = dc;
+  const { width } = dc;
   const startX = timeToX(trimStart, width, view);
   const endX = timeToX(trimEnd, width, view);
+  const clampedStartX = Math.max(0, startX);
+  const clampedEndX = Math.min(width, endX);
+  const bounds: RegionBounds = { startX: clampedStartX, endX: clampedEndX, height: waveformHeight };
 
   // Dimmed areas outside trim
-  ctx.fillStyle = "#00000080";
-  ctx.fillRect(0, 0, Math.max(0, startX), waveformHeight);
-  ctx.fillRect(Math.min(width, endX), 0, width - Math.min(width, endX), waveformHeight);
+  drawRegionFill(dc, { startX: 0, endX: clampedStartX, height: waveformHeight }, "#00000080");
+  drawRegionFill(dc, { startX: clampedEndX, endX: width, height: waveformHeight }, "#00000080");
 
   // Trim boundaries
-  ctx.strokeStyle = "#ef4444";
-  ctx.lineWidth = 3;
-  if (startX >= 0 && startX <= width) {
-    ctx.beginPath();
-    ctx.moveTo(startX, 0);
-    ctx.lineTo(startX, waveformHeight);
-    ctx.stroke();
-  }
-  if (endX >= 0 && endX <= width) {
-    ctx.beginPath();
-    ctx.moveTo(endX, 0);
-    ctx.lineTo(endX, waveformHeight);
-    ctx.stroke();
-  }
+  drawVerticalLine(dc, startX, waveformHeight, "#ef4444", 3);
+  drawVerticalLine(dc, endX, waveformHeight, "#ef4444", 3);
 
   // Trim region fill
-  ctx.fillStyle = "#ef444420";
-  ctx.fillRect(Math.max(0, startX), 0, Math.min(width, endX) - Math.max(0, startX), waveformHeight);
+  drawRegionFill(dc, bounds, "#ef444420");
 
   // Labels
-  ctx.fillStyle = "#ef4444";
-  ctx.font = "11px monospace";
   if (startX > 0 && startX < width - 50) {
-    ctx.fillText(`Start: ${trimStart.toFixed(2)}s`, startX + 4, 14);
+    drawRegionLabel(dc, `Start: ${trimStart.toFixed(2)}s`, startX + 4, "#ef4444");
   }
   if (endX > 50 && endX < width) {
-    ctx.textAlign = "right";
-    ctx.fillText(`End: ${trimEnd.toFixed(2)}s`, endX - 4, 14);
-    ctx.textAlign = "left";
+    drawRegionLabel(dc, `End: ${trimEnd.toFixed(2)}s`, endX - 4, "#ef4444", "right");
   }
 }
 
@@ -154,7 +195,7 @@ export function drawAnnotation(
   view: ViewState,
   waveformHeight: number,
 ): void {
-  const { ctx, width } = dc;
+  const { width } = dc;
   const startX = timeToX(annotation.startTime, width, view);
   const endX = timeToX(annotation.endTime, width, view);
 
@@ -162,28 +203,19 @@ export function drawAnnotation(
   if (endX < 0 || startX > width) return;
 
   const color = label?.color ?? "#666";
+  const bounds: RegionBounds = { startX, endX, height: waveformHeight };
 
-  // Fill
-  ctx.fillStyle = `${color}30`;
-  ctx.fillRect(startX, 0, endX - startX, waveformHeight);
-
-  // Border
-  ctx.strokeStyle = isSelected ? "#fff" : color;
-  ctx.lineWidth = isSelected ? 2 : 1;
-  ctx.strokeRect(startX, 0, endX - startX, waveformHeight);
+  drawRegionFill(dc, bounds, `${color}30`);
+  drawRegionBorder(dc, bounds, isSelected ? "#fff" : color, { lineWidth: isSelected ? 2 : 1 });
 
   // Label text
   if (label && endX - startX > 40) {
-    ctx.fillStyle = color;
-    ctx.font = "11px sans-serif";
-    ctx.fillText(label.name, startX + 4, 14);
+    drawRegionLabel(dc, label.name, startX + 4, color);
   }
 
   // Resize handles for selected
   if (isSelected) {
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(startX - 3, waveformHeight / 2 - 12, 6, 24);
-    ctx.fillRect(endX - 3, waveformHeight / 2 - 12, 6, 24);
+    drawResizeHandles(dc, bounds, "#fff");
   }
 }
 
@@ -210,25 +242,14 @@ export function drawSelection(
   waveformHeight: number,
   isDashed = true,
 ): void {
-  const { ctx, width } = dc;
+  const { width } = dc;
   const startX = timeToX(startTime, width, view);
   const endX = timeToX(endTime, width, view);
+  const bounds: RegionBounds = { startX, endX, height: waveformHeight };
 
-  ctx.fillStyle = "#3b82f640";
-  ctx.fillRect(startX, 0, endX - startX, waveformHeight);
-
-  ctx.strokeStyle = "#3b82f6";
-  ctx.lineWidth = 2;
-  if (isDashed) {
-    ctx.setLineDash([4, 4]);
-  }
-  ctx.strokeRect(startX, 0, endX - startX, waveformHeight);
-  ctx.setLineDash([]);
-
-  // Resize handles
-  ctx.fillStyle = "#3b82f6";
-  ctx.fillRect(startX - 3, waveformHeight / 2 - 12, 6, 24);
-  ctx.fillRect(endX - 3, waveformHeight / 2 - 12, 6, 24);
+  drawRegionFill(dc, bounds, "#3b82f640");
+  drawRegionBorder(dc, bounds, "#3b82f6", { lineWidth: 2, dashed: isDashed });
+  drawResizeHandles(dc, bounds, "#3b82f6");
 }
 
 export function drawDragPreview(
@@ -238,18 +259,13 @@ export function drawDragPreview(
   waveformHeight: number,
   isTrimMode: boolean,
 ): void {
-  const { ctx } = dc;
   const left = Math.min(startX, currentX);
   const right = Math.max(startX, currentX);
+  const bounds: RegionBounds = { startX: left, endX: right, height: waveformHeight };
+  const color = isTrimMode ? "#ef4444" : "#3b82f6";
 
-  ctx.fillStyle = isTrimMode ? "#ef444430" : "#3b82f640";
-  ctx.fillRect(left, 0, right - left, waveformHeight);
-
-  ctx.strokeStyle = isTrimMode ? "#ef4444" : "#3b82f6";
-  ctx.lineWidth = 2;
-  ctx.setLineDash([4, 4]);
-  ctx.strokeRect(left, 0, right - left, waveformHeight);
-  ctx.setLineDash([]);
+  drawRegionFill(dc, bounds, `${color}30`);
+  drawRegionBorder(dc, bounds, color, { lineWidth: 2, dashed: true });
 }
 
 export function drawPlayhead(dc: DrawContext, currentTime: number, view: ViewState, waveformHeight: number): void {
