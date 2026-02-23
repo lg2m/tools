@@ -10,7 +10,7 @@ export const Route = createRootRoute({
   head: () => ({
     meta: [
       {
-        charSet: "utf-8"
+        charSet: "utf-8",
       },
       {
         name: "viewport",
@@ -20,7 +20,7 @@ export const Route = createRootRoute({
         title: "tools.zmeyer.dev",
         description: "Open-source data processing tools built for machine learning at scale.",
       }),
-    ]
+    ],
   }),
   component: RootComponent,
 });

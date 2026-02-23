@@ -50,7 +50,8 @@ export interface ProcessedAudioOutput {
   fileName: string;
   blob: Blob;
   mimeType: string;
-  format: "wav";
+  format: "wav" | "mp3";
+  bitDepth: 16 | 24 | 32 | null;
   duration: number;
   sampleRate: number;
   channels: number;
@@ -72,6 +73,9 @@ const PROCESSING_STEPS: readonly ProcessingStep[] = [
   "convert",
 ];
 const DEFAULT_STEP_DELAY_MS = 120;
+const DEFAULT_OUTPUT_BIT_DEPTH = 16 as const;
+const MP3_ENCODING_QUALITY = 2;
+const MP3_ENCODE_CHUNK_SIZE = 1152 * 8;
 
 const PROCESSING_STEP_LABELS: Record<ProcessingStep, string> = {
   trim: "Trim range",
@@ -205,6 +209,32 @@ export function dbToAmplitude(db: number): number {
   }
 
   return 10 ** (db / 20);
+}
+
+export function quantizeSampleToBitDepth(sample: number, targetBitDepth: 16 | 24 | 32): number {
+  if (!Number.isFinite(sample)) {
+    throw new Error("Audio sample must be finite");
+  }
+
+  const clampedSample = clamp(sample, -1, 1);
+  if (targetBitDepth === 32) return clampedSample;
+
+  const negativeScale = 2 ** (targetBitDepth - 1);
+  const positiveScale = negativeScale - 1;
+
+  if (clampedSample < 0) {
+    return Math.round(clampedSample * negativeScale) / negativeScale;
+  }
+
+  return Math.round(clampedSample * positiveScale) / positiveScale;
+}
+
+export function getOutputFormat(options: ProcessingOptions): "wav" | "mp3" {
+  return options.convert.enabled ? options.convert.format : "wav";
+}
+
+export function getOutputBitDepth(options: ProcessingOptions): 16 | 24 | 32 {
+  return options.bitDepth.enabled ? options.bitDepth.targetBitDepth : DEFAULT_OUTPUT_BIT_DEPTH;
 }
 
 function replaceExtension(fileName: string, nextExtension: string): string {
@@ -399,6 +429,35 @@ function trimAudioBuffer(audioBuffer: AudioBuffer, startSeconds: number, endSeco
   return trimmed;
 }
 
+function applyBitDepthToAudioBuffer(
+  audioBuffer: AudioBuffer,
+  targetBitDepth: 16 | 24 | 32,
+  signal?: AbortSignal,
+): AudioBuffer {
+  if (targetBitDepth === 32) return audioBuffer;
+
+  const converted = new AudioBuffer({
+    numberOfChannels: audioBuffer.numberOfChannels,
+    length: audioBuffer.length,
+    sampleRate: audioBuffer.sampleRate,
+  });
+
+  for (let channelIndex = 0; channelIndex < audioBuffer.numberOfChannels; channelIndex++) {
+    const source = audioBuffer.getChannelData(channelIndex);
+    const destination = converted.getChannelData(channelIndex);
+
+    for (let sampleIndex = 0; sampleIndex < source.length; sampleIndex++) {
+      if (sampleIndex % 16384 === 0) {
+        throwIfAborted(signal);
+      }
+
+      destination[sampleIndex] = quantizeSampleToBitDepth(source[sampleIndex], targetBitDepth);
+    }
+  }
+
+  return converted;
+}
+
 function convertToMono(audioBuffer: AudioBuffer, signal?: AbortSignal): AudioBuffer {
   if (audioBuffer.numberOfChannels === 1) return audioBuffer;
 
@@ -535,8 +594,9 @@ function trimSilenceAudioBuffer(
   return trimAudioBuffer(audioBuffer, startSeconds, endSeconds);
 }
 
-function encodeWav(audioBuffer: AudioBuffer): Blob {
-  const bytesPerSample = 2;
+function encodeWav(audioBuffer: AudioBuffer, targetBitDepth: 16 | 24 | 32): Blob {
+  const bytesPerSample = targetBitDepth / 8;
+  const formatCode = targetBitDepth === 32 ? 3 : 1;
   const channelCount = audioBuffer.numberOfChannels;
   const sampleCount = audioBuffer.length;
   const dataSize = sampleCount * channelCount * bytesPerSample;
@@ -558,7 +618,7 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   writeAscii("fmt ");
   view.setUint32(offset, 16, true);
   offset += 4;
-  view.setUint16(offset, 1, true);
+  view.setUint16(offset, formatCode, true);
   offset += 2;
   view.setUint16(offset, channelCount, true);
   offset += 2;
@@ -568,7 +628,7 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   offset += 4;
   view.setUint16(offset, channelCount * bytesPerSample, true);
   offset += 2;
-  view.setUint16(offset, bytesPerSample * 8, true);
+  view.setUint16(offset, targetBitDepth, true);
   offset += 2;
   writeAscii("data");
   view.setUint32(offset, dataSize, true);
@@ -579,27 +639,160 @@ function encodeWav(audioBuffer: AudioBuffer): Blob {
   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
     for (let channel = 0; channel < channelCount; channel++) {
       const sample = clamp(channels[channel][sampleIndex], -1, 1);
-      const int16 = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
-      view.setInt16(offset, int16, true);
-      offset += 2;
+      if (targetBitDepth === 16) {
+        const int16 = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
+        view.setInt16(offset, int16, true);
+        offset += 2;
+      } else if (targetBitDepth === 24) {
+        const int24 = sample < 0 ? Math.round(sample * 8388608) : Math.round(sample * 8388607);
+        const clampedInt24 = clamp(int24, -8388608, 8388607);
+        const unsigned = clampedInt24 < 0 ? clampedInt24 + 16777216 : clampedInt24;
+        view.setUint8(offset, unsigned & 0xff);
+        view.setUint8(offset + 1, (unsigned >> 8) & 0xff);
+        view.setUint8(offset + 2, (unsigned >> 16) & 0xff);
+        offset += 3;
+      } else {
+        view.setFloat32(offset, sample, true);
+        offset += 4;
+      }
     }
   }
 
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-function buildWavOutput(file: AudioFile, processedBuffer: AudioBuffer): ProcessedAudioOutput {
-  const blob = encodeWav(processedBuffer);
+interface Mp3Encoder {
+  configure(options: { sampleRate: number; channels: 1 | 2; vbrQuality: number }): void;
+  encode(samples: Float32Array[]): Uint8Array;
+  finalize(): Uint8Array;
+}
+
+interface Mp3EncoderModule {
+  createMp3Encoder: () => Promise<Mp3Encoder>;
+}
+
+let mp3EncoderModulePromise: Promise<Mp3EncoderModule> | null = null;
+
+async function createMp3EncoderInstance(): Promise<Mp3Encoder> {
+  if (!mp3EncoderModulePromise) {
+    mp3EncoderModulePromise = import("wasm-media-encoders") as Promise<Mp3EncoderModule>;
+  }
+
+  const module = await mp3EncoderModulePromise;
+  return module.createMp3Encoder();
+}
+
+function getMp3Channels(audioBuffer: AudioBuffer): [Float32Array] | [Float32Array, Float32Array] {
+  if (audioBuffer.numberOfChannels === 1) {
+    return [audioBuffer.getChannelData(0)];
+  }
+  if (audioBuffer.numberOfChannels === 2) {
+    return [audioBuffer.getChannelData(0), audioBuffer.getChannelData(1)];
+  }
+
+  throw new Error("MP3 conversion currently supports mono or stereo audio only");
+}
+
+function copyEncoderChunk(chunk: Uint8Array): Uint8Array | null {
+  if (chunk.length === 0) return null;
+  return new Uint8Array(chunk);
+}
+
+async function encodeMp3(audioBuffer: AudioBuffer, signal?: AbortSignal): Promise<Blob> {
+  throwIfAborted(signal);
+
+  const encoder = await createMp3EncoderInstance();
+  throwIfAborted(signal);
+
+  const channels = getMp3Channels(audioBuffer);
+  const channelCount = channels.length as 1 | 2;
+  encoder.configure({
+    sampleRate: audioBuffer.sampleRate,
+    channels: channelCount,
+    vbrQuality: MP3_ENCODING_QUALITY,
+  });
+
+  const encodedChunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  for (let frameOffset = 0; frameOffset < audioBuffer.length; frameOffset += MP3_ENCODE_CHUNK_SIZE) {
+    throwIfAborted(signal);
+    const frameEnd = Math.min(frameOffset + MP3_ENCODE_CHUNK_SIZE, audioBuffer.length);
+    const frameChannels = channels.map((channel) => channel.subarray(frameOffset, frameEnd));
+    const encoded = copyEncoderChunk(encoder.encode(frameChannels));
+    if (encoded) {
+      encodedChunks.push(encoded);
+      totalBytes += encoded.length;
+    }
+  }
+
+  const finalChunk = copyEncoderChunk(encoder.finalize());
+  if (finalChunk) {
+    encodedChunks.push(finalChunk);
+    totalBytes += finalChunk.length;
+  }
+
+  const output = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of encodedChunks) {
+    output.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  return new Blob([output], { type: "audio/mpeg" });
+}
+
+function buildWavOutput(
+  file: AudioFile,
+  processedBuffer: AudioBuffer,
+  targetBitDepth: 16 | 24 | 32,
+): ProcessedAudioOutput {
+  const blob = encodeWav(processedBuffer, targetBitDepth);
   return {
     fileId: file.id,
     fileName: replaceExtension(file.name, "wav"),
     blob,
     mimeType: "audio/wav",
     format: "wav",
+    bitDepth: targetBitDepth,
     duration: processedBuffer.duration,
     sampleRate: processedBuffer.sampleRate,
     channels: processedBuffer.numberOfChannels,
   };
+}
+
+async function buildMp3Output(
+  file: AudioFile,
+  processedBuffer: AudioBuffer,
+  signal?: AbortSignal,
+): Promise<ProcessedAudioOutput> {
+  const blob = await encodeMp3(processedBuffer, signal);
+  return {
+    fileId: file.id,
+    fileName: replaceExtension(file.name, "mp3"),
+    blob,
+    mimeType: "audio/mpeg",
+    format: "mp3",
+    bitDepth: null,
+    duration: processedBuffer.duration,
+    sampleRate: processedBuffer.sampleRate,
+    channels: processedBuffer.numberOfChannels,
+  };
+}
+
+async function buildOutput(
+  file: AudioFile,
+  processedBuffer: AudioBuffer,
+  options: ProcessingOptions,
+  signal?: AbortSignal,
+): Promise<ProcessedAudioOutput> {
+  const outputFormat = getOutputFormat(options);
+  if (outputFormat === "mp3") {
+    return buildMp3Output(file, processedBuffer, signal);
+  }
+
+  const outputBitDepth = getOutputBitDepth(options);
+  return buildWavOutput(file, processedBuffer, outputBitDepth);
 }
 
 export function createInitialAggregate(totalFiles: number): AggregateProgress {
@@ -722,6 +915,14 @@ export async function* processAudioBatch(
         } else if (step === "normalize") {
           const decoded = await ensureWorkingBuffer();
           workingBuffer = normalizeAudioBuffer(decoded, options.normalize.targetDb, signal);
+        } else if (step === "bitDepth") {
+          const decoded = await ensureWorkingBuffer();
+          workingBuffer = applyBitDepthToAudioBuffer(decoded, options.bitDepth.targetBitDepth, signal);
+        } else if (step === "convert") {
+          const decoded = await ensureWorkingBuffer();
+          if (options.convert.format === "mp3") {
+            getMp3Channels(decoded);
+          }
         } else {
           await sleep(stepDelayMs, signal);
         }
@@ -732,7 +933,7 @@ export async function* processAudioBatch(
       }
 
       if (workingBuffer) {
-        outputs.set(file.id, buildWavOutput(file, workingBuffer));
+        outputs.set(file.id, await buildOutput(file, workingBuffer, options, signal));
       }
 
       state.status = "success";

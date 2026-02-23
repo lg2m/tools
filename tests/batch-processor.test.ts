@@ -5,8 +5,11 @@ import {
   computePeakNormalizationGain,
   dbToAmplitude,
   downmixChannelsToMono,
+  getOutputBitDepth,
+  getOutputFormat,
   getPeakAmplitude,
   getTrimRangeSeconds,
+  quantizeSampleToBitDepth,
   validateHighpassCutoffHz,
   validateTargetSampleRate,
 } from "../src/lib/audio/batch-processor";
@@ -145,6 +148,89 @@ test("validateHighpassCutoffHz throws for invalid values", () => {
 test("dbToAmplitude converts dBFS values to linear amplitudes", () => {
   expect(dbToAmplitude(0)).toBeCloseTo(1, 6);
   expect(dbToAmplitude(-20)).toBeCloseTo(0.1, 6);
+});
+
+test("quantizeSampleToBitDepth quantizes 16-bit samples", () => {
+  const sample = 0.123456;
+
+  const quantized = quantizeSampleToBitDepth(sample, 16);
+
+  expect(quantized).toBeCloseTo(Math.round(sample * 32767) / 32767, 6);
+});
+
+test("quantizeSampleToBitDepth keeps 32-bit samples unchanged", () => {
+  const sample = 0.123456789;
+
+  expect(quantizeSampleToBitDepth(sample, 32)).toBeCloseTo(sample, 9);
+});
+
+test("quantizeSampleToBitDepth clamps out-of-range values", () => {
+  expect(quantizeSampleToBitDepth(3, 24)).toBe(1);
+  expect(quantizeSampleToBitDepth(-3, 24)).toBe(-1);
+});
+
+test("quantizeSampleToBitDepth throws for invalid input samples", () => {
+  expect(() => quantizeSampleToBitDepth(Number.NaN, 16)).toThrow("Audio sample must be finite");
+});
+
+test("getOutputFormat returns convert format when enabled", () => {
+  const options = {
+    resample: { enabled: false, targetRate: 16000 },
+    convert: { enabled: true, format: "mp3" as const },
+    mono: { enabled: false },
+    highpass: { enabled: false, cutoffHz: 80 },
+    silence: { enabled: false, thresholdDb: -35, minDurationMs: 150 },
+    normalize: { enabled: false, targetDb: -3 },
+    bitDepth: { enabled: false, targetBitDepth: 16 as const },
+    trim: { enabled: false, usePerFileTrim: true, globalStart: 0, globalEnd: 0 },
+  };
+
+  expect(getOutputFormat(options)).toBe("mp3");
+});
+
+test("getOutputFormat defaults to wav when convert is disabled", () => {
+  const options = {
+    resample: { enabled: false, targetRate: 16000 },
+    convert: { enabled: false, format: "mp3" as const },
+    mono: { enabled: false },
+    highpass: { enabled: false, cutoffHz: 80 },
+    silence: { enabled: false, thresholdDb: -35, minDurationMs: 150 },
+    normalize: { enabled: false, targetDb: -3 },
+    bitDepth: { enabled: false, targetBitDepth: 24 as const },
+    trim: { enabled: false, usePerFileTrim: true, globalStart: 0, globalEnd: 0 },
+  };
+
+  expect(getOutputFormat(options)).toBe("wav");
+});
+
+test("getOutputBitDepth returns configured bit depth when enabled", () => {
+  const options = {
+    resample: { enabled: false, targetRate: 16000 },
+    convert: { enabled: false, format: "wav" as const },
+    mono: { enabled: false },
+    highpass: { enabled: false, cutoffHz: 80 },
+    silence: { enabled: false, thresholdDb: -35, minDurationMs: 150 },
+    normalize: { enabled: false, targetDb: -3 },
+    bitDepth: { enabled: true, targetBitDepth: 24 as const },
+    trim: { enabled: false, usePerFileTrim: true, globalStart: 0, globalEnd: 0 },
+  };
+
+  expect(getOutputBitDepth(options)).toBe(24);
+});
+
+test("getOutputBitDepth falls back to default when disabled", () => {
+  const options = {
+    resample: { enabled: false, targetRate: 16000 },
+    convert: { enabled: false, format: "wav" as const },
+    mono: { enabled: false },
+    highpass: { enabled: false, cutoffHz: 80 },
+    silence: { enabled: false, thresholdDb: -35, minDurationMs: 150 },
+    normalize: { enabled: false, targetDb: -3 },
+    bitDepth: { enabled: false, targetBitDepth: 24 as const },
+    trim: { enabled: false, usePerFileTrim: true, globalStart: 0, globalEnd: 0 },
+  };
+
+  expect(getOutputBitDepth(options)).toBe(16);
 });
 
 test("calculateSilenceTrimFrames trims long leading and trailing silence", () => {

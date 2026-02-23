@@ -1,5 +1,5 @@
-import { cn } from "@/lib/utils";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   component: RouteComponent,
@@ -15,7 +15,6 @@ function RouteComponent() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-foreground">
       <div className="w-full max-w-xl space-y-12">
-
         <header className="space-y-2 border-l-2 border-primary pl-4">
           <h1 className="text-3xl font-bold lowercase tracking-tighter">tools.zmeyer.dev</h1>
           <p className="text-sm text-muted-foreground">
@@ -26,9 +25,7 @@ function RouteComponent() {
         </header>
 
         <nav className="space-y-4">
-          <div className="text-[10px] uppercase tracking-widest text-muted-foreground/50 mb-2">
-            Utilities
-          </div>
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground/50 mb-2">Utilities</div>
 
           <div className="divide-y border-y border-border">
             {tools.map((tool) => (
@@ -57,7 +54,9 @@ function RouteComponent() {
           <div className="h-px w-12 bg-border" />
           <p className="text-muted-foreground">
             source code availabe on{" "}
-            <a href="#" className="underline hover:text-foreground">github</a>
+            <a href="#" className="underline hover:text-foreground">
+              github
+            </a>
           </p>
           <p>
             back to{" "}
