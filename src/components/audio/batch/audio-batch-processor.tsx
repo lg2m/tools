@@ -1,5 +1,6 @@
+import JSZip from "jszip";
 import { CheckCircle2, Play } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import { type AnnotationExportFormat, AnnotationExportTab } from "@/components/audio/batch/annotation-export-tab";
 import { AudioProcessingTab } from "@/components/audio/batch/audio-processing-tab";
 import { BatchProcessorDialog } from "@/components/batch/batch-processor-dialog";
@@ -28,8 +29,63 @@ interface ProcessCallbacks {
   onProgress: (aggregate: AggregateProgress) => void;
   onFileUpdate: (file: FileProcessingState) => void;
   onActiveFile: (file: FileProcessingState | null) => void;
-  onOutput: (output: ProcessedAudioOutput) => void;
-  onComplete: () => void;
+  onComplete: (outputs: ProcessedAudioOutput[]) => void | Promise<void>;
+}
+
+interface ProcessingUiState {
+  processing: boolean;
+  aggregateProgress: AggregateProgress;
+  fileStatuses: Record<string, FileProcessingState>;
+  activeFile: FileProcessingState | null;
+}
+
+type ProcessingUiAction =
+  | {
+      type: "start";
+      totalFiles: number;
+      fileStatuses: Record<string, FileProcessingState>;
+    }
+  | { type: "set-progress"; aggregate: AggregateProgress }
+  | { type: "set-file"; file: FileProcessingState }
+  | { type: "set-active-file"; file: FileProcessingState | null }
+  | { type: "cleanup" };
+
+function createQueuedFileStatuses(files: AudioFile[]): Record<string, FileProcessingState> {
+  return Object.fromEntries(
+    files.map((file) => [file.id, { fileId: file.id, fileName: file.name, status: "queued" as const }]),
+  );
+}
+
+function createProcessingUiState(totalFiles: number): ProcessingUiState {
+  return {
+    processing: false,
+    aggregateProgress: createInitialAggregate(totalFiles),
+    fileStatuses: {},
+    activeFile: null,
+  };
+}
+
+function processingUiReducer(state: ProcessingUiState, action: ProcessingUiAction): ProcessingUiState {
+  switch (action.type) {
+    case "start":
+      return {
+        processing: true,
+        aggregateProgress: createInitialAggregate(action.totalFiles),
+        fileStatuses: action.fileStatuses,
+        activeFile: null,
+      };
+    case "set-progress":
+      return { ...state, aggregateProgress: action.aggregate };
+    case "set-file":
+      return {
+        ...state,
+        fileStatuses: { ...state.fileStatuses, [action.file.fileId]: action.file },
+      };
+    case "set-active-file":
+      return { ...state, activeFile: action.file };
+    case "cleanup":
+      return { ...state, processing: false, activeFile: null };
+  }
 }
 
 async function runBatchProcess(
@@ -38,8 +94,8 @@ async function runBatchProcess(
   signal: AbortSignal,
   callbacks: ProcessCallbacks,
 ): Promise<void> {
-  const { onProgress, onFileUpdate, onActiveFile, onOutput, onComplete } = callbacks;
-  const deliveredOutputs = new Set<string>();
+  const { onProgress, onFileUpdate, onActiveFile, onComplete } = callbacks;
+  const deliveredOutputs = new Map<string, ProcessedAudioOutput>();
 
   try {
     for await (const update of processAudioBatch(files, options, { signal })) {
@@ -47,13 +103,12 @@ async function runBatchProcess(
       onFileUpdate(update.file);
       onActiveFile(update.file.status === "running" ? update.file : null);
 
-      if (update.output && !deliveredOutputs.has(update.output.fileId)) {
-        deliveredOutputs.add(update.output.fileId);
-        onOutput(update.output);
+      if (update.output) {
+        deliveredOutputs.set(update.output.fileId, update.output);
       }
     }
   } finally {
-    onComplete();
+    await onComplete([...deliveredOutputs.values()]);
   }
 }
 
@@ -75,27 +130,37 @@ function downloadBlob(blob: Blob, filename: string): void {
 
   link.href = url;
   link.download = filename;
+  link.style.display = "none";
+  document.body.append(link);
   link.click();
+  link.remove();
 
-  URL.revokeObjectURL(url);
+  globalThis.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+async function downloadProcessedArchive(outputs: ProcessedAudioOutput[]): Promise<void> {
+  const zip = new JSZip();
+
+  for (const output of outputs) {
+    zip.file(output.fileName, output.blob);
+  }
+
+  const archive = await zip.generateAsync({ type: "blob" });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  downloadBlob(archive, `processed-audio-${timestamp}.zip`);
 }
 
 export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: AudioBatchProcessorProps) {
   const [activeTab, setActiveTab] = useState<BatchTab>("process");
   const [options, setOptions] = useState<ProcessingOptions>(() => createDefaultProcessingOptions());
-  const [processing, setProcessing] = useState(false);
-  const [aggregateProgress, setAggregateProgress] = useState<AggregateProgress>(() =>
-    createInitialAggregate(files.length),
-  );
-  const [fileStatuses, setFileStatuses] = useState<Record<string, FileProcessingState>>({});
-  const [activeFile, setActiveFile] = useState<FileProcessingState | null>(null);
   const [exportFormat, setExportFormat] = useState<AnnotationExportFormat>("json");
+  const [processingState, dispatchProcessing] = useReducer(processingUiReducer, files.length, createProcessingUiState);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { processing, aggregateProgress, fileStatuses, activeFile } = processingState;
 
-  const selectedOperationCount = useMemo(
-    () => Object.values(options).filter((option) => option.enabled).length,
-    [options],
-  );
+  const selectedOperationCount = Object.values(options).filter((option) => option.enabled).length;
 
   const failedFileNames = useMemo(
     () =>
@@ -105,10 +170,7 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
     [fileStatuses],
   );
 
-  const annotatedFileCount = useMemo(
-    () => new Set(annotations.map((annotation) => annotation.fileId)).size,
-    [annotations],
-  );
+  const annotatedFileCount = new Set(annotations.map((annotation) => annotation.fileId)).size;
 
   const closeProcessor = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -118,9 +180,8 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
   };
 
   const cleanupProcessing = () => {
-    setProcessing(false);
+    dispatchProcessing({ type: "cleanup" });
     abortControllerRef.current = null;
-    setActiveFile(null);
   };
 
   const handleProcess = () => {
@@ -129,21 +190,31 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    setProcessing(true);
-    setAggregateProgress(createInitialAggregate(files.length));
-    setFileStatuses(
-      Object.fromEntries(
-        files.map((file) => [file.id, { fileId: file.id, fileName: file.name, status: "queued" as const }]),
-      ),
-    );
-    setActiveFile(null);
+    dispatchProcessing({
+      type: "start",
+      totalFiles: files.length,
+      fileStatuses: createQueuedFileStatuses(files),
+    });
 
     void runBatchProcess(files, options, controller.signal, {
-      onProgress: setAggregateProgress,
-      onFileUpdate: (file) => setFileStatuses((current) => ({ ...current, [file.fileId]: file })),
-      onActiveFile: setActiveFile,
-      onOutput: (output) => downloadBlob(output.blob, output.fileName),
-      onComplete: cleanupProcessing,
+      onProgress: (aggregate) => dispatchProcessing({ type: "set-progress", aggregate }),
+      onFileUpdate: (file) => dispatchProcessing({ type: "set-file", file }),
+      onActiveFile: (file) => dispatchProcessing({ type: "set-active-file", file }),
+      onComplete: async (outputs) => {
+        try {
+          if (outputs.length === 1) {
+            const [output] = outputs;
+            downloadBlob(output.blob, output.fileName);
+          } else if (outputs.length > 1) {
+            await downloadProcessedArchive(outputs);
+          }
+
+          cleanupProcessing();
+        } catch (error) {
+          cleanupProcessing();
+          throw error;
+        }
+      },
     });
   };
 

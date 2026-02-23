@@ -552,7 +552,7 @@ async function highpassAudioBuffer(
 
   highpass.type = "highpass";
   highpass.frequency.value = validatedCutoffHz;
-  highpass.Q.value = 0.707;
+  highpass.Q.value = Math.SQRT1_2;
 
   source.buffer = audioBuffer;
   source.connect(highpass);

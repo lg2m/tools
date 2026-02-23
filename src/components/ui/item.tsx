@@ -5,10 +5,8 @@ import type * as React from "react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
-function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div role="list" data-slot="item-group" className={cn("group/item-group flex flex-col", className)} {...props} />
-  );
+function ItemGroup({ className, ...props }: React.ComponentProps<"ul">) {
+  return <ul data-slot="item-group" className={cn("group/item-group flex flex-col", className)} {...props} />;
 }
 
 function ItemSeparator({ className, ...props }: React.ComponentProps<typeof Separator>) {

@@ -54,7 +54,7 @@ function RouteComponent() {
           <div className="h-px w-12 bg-border" />
           <p className="text-muted-foreground">
             source code availabe on{" "}
-            <a href="#" className="underline hover:text-foreground">
+            <a href="https://github.com/lg2m/tools" className="underline hover:text-foreground">
               github
             </a>
           </p>
