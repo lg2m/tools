@@ -1,9 +1,8 @@
-import { expect, test } from '@rstest/core';
-import { render, screen } from '@testing-library/react';
-import App from '../src/app';
+import { expect, test } from "@rstest/core";
+import { render, screen } from "@testing-library/react";
+import App from "../src/app";
 
-test('renders the main page', () => {
-  const testMessage = 'tools';
+test("renders the main page", async () => {
   render(<App />);
-  expect(screen.getByText(testMessage)).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /tools/i })).toBeInTheDocument();
 });

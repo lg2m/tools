@@ -9,6 +9,7 @@ import {
   createDefaultProcessingOptions,
   createInitialAggregate,
   type FileProcessingState,
+  type ProcessedAudioOutput,
   type ProcessingOptions,
   processAudioBatch,
 } from "@/lib/audio/batch-processor";
@@ -27,6 +28,7 @@ interface ProcessCallbacks {
   onProgress: (aggregate: AggregateProgress) => void;
   onFileUpdate: (file: FileProcessingState) => void;
   onActiveFile: (file: FileProcessingState | null) => void;
+  onOutput: (output: ProcessedAudioOutput) => void;
   onComplete: () => void;
 }
 
@@ -36,13 +38,19 @@ async function runBatchProcess(
   signal: AbortSignal,
   callbacks: ProcessCallbacks,
 ): Promise<void> {
-  const { onProgress, onFileUpdate, onActiveFile, onComplete } = callbacks;
+  const { onProgress, onFileUpdate, onActiveFile, onOutput, onComplete } = callbacks;
+  const deliveredOutputs = new Set<string>();
 
   try {
     for await (const update of processAudioBatch(files, options, { signal })) {
       onProgress(update.aggregate);
       onFileUpdate(update.file);
       onActiveFile(update.file.status === "running" ? update.file : null);
+
+      if (update.output && !deliveredOutputs.has(update.output.fileId)) {
+        deliveredOutputs.add(update.output.fileId);
+        onOutput(update.output);
+      }
     }
   } finally {
     onComplete();
@@ -51,6 +59,17 @@ async function runBatchProcess(
 
 function downloadContent(content: string, filename: string, mimeType = "text/plain"): void {
   const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  link.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
 
@@ -123,6 +142,7 @@ export function AudioBatchProcessor({ open, files, annotations, onOpenChange }: 
       onProgress: setAggregateProgress,
       onFileUpdate: (file) => setFileStatuses((current) => ({ ...current, [file.fileId]: file })),
       onActiveFile: setActiveFile,
+      onOutput: (output) => downloadBlob(output.blob, output.fileName),
       onComplete: cleanupProcessing,
     });
   };

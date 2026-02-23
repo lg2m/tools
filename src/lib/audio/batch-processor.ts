@@ -42,6 +42,18 @@ export interface AggregateProgress {
 export interface BatchProgressUpdate {
   file: FileProcessingState;
   aggregate: AggregateProgress;
+  output?: ProcessedAudioOutput;
+}
+
+export interface ProcessedAudioOutput {
+  fileId: string;
+  fileName: string;
+  blob: Blob;
+  mimeType: string;
+  format: "wav";
+  duration: number;
+  sampleRate: number;
+  channels: number;
 }
 
 export interface BatchProcessorConfig {
@@ -147,6 +159,152 @@ function snapshot(state: FileProcessingState): FileProcessingState {
   return { ...state };
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function replaceExtension(fileName: string, nextExtension: string): string {
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex <= 0) return `${fileName}.${nextExtension}`;
+  return `${fileName.slice(0, dotIndex)}.${nextExtension}`;
+}
+
+async function decodeAudio(file: AudioFile, signal?: AbortSignal): Promise<AudioBuffer> {
+  throwIfAborted(signal);
+
+  const response = await fetch(file.url, { signal });
+  if (!response.ok) {
+    throw new Error(`Failed to load audio file: ${file.name}`);
+  }
+
+  const encoded = await response.arrayBuffer();
+  throwIfAborted(signal);
+
+  const context = new AudioContext();
+  try {
+    const decoded = await context.decodeAudioData(encoded.slice(0));
+    throwIfAborted(signal);
+    return decoded;
+  } finally {
+    await context.close();
+  }
+}
+
+function getTrimRangeSeconds(
+  file: AudioFile,
+  options: ProcessingOptions["trim"],
+  duration: number,
+): { start: number; end: number } {
+  const rawStart = options.usePerFileTrim ? (file.trimStart ?? 0) : options.globalStart;
+  const rawEnd = options.usePerFileTrim
+    ? (file.trimEnd ?? duration)
+    : options.globalEnd > 0
+      ? options.globalEnd
+      : duration;
+
+  const start = clamp(rawStart, 0, duration);
+  const end = clamp(rawEnd, 0, duration);
+
+  if (end <= start) {
+    throw new Error(`Invalid trim range for ${file.name}: start must be less than end`);
+  }
+
+  return { start, end };
+}
+
+function trimAudioBuffer(audioBuffer: AudioBuffer, startSeconds: number, endSeconds: number): AudioBuffer {
+  const startFrame = Math.floor(startSeconds * audioBuffer.sampleRate);
+  const endFrame = Math.ceil(endSeconds * audioBuffer.sampleRate);
+  const frameCount = Math.max(endFrame - startFrame, 1);
+  const trimmed = new AudioBuffer({
+    numberOfChannels: audioBuffer.numberOfChannels,
+    length: frameCount,
+    sampleRate: audioBuffer.sampleRate,
+  });
+
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+    const source = audioBuffer.getChannelData(channel).subarray(startFrame, endFrame);
+    trimmed.copyToChannel(source, channel, 0);
+  }
+
+  return trimmed;
+}
+
+function encodeWav(audioBuffer: AudioBuffer): Blob {
+  const bytesPerSample = 2;
+  const channelCount = audioBuffer.numberOfChannels;
+  const sampleCount = audioBuffer.length;
+  const dataSize = sampleCount * channelCount * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  let offset = 0;
+  const writeAscii = (value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+    offset += value.length;
+  };
+
+  writeAscii("RIFF");
+  view.setUint32(offset, 36 + dataSize, true);
+  offset += 4;
+  writeAscii("WAVE");
+  writeAscii("fmt ");
+  view.setUint32(offset, 16, true);
+  offset += 4;
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  view.setUint16(offset, channelCount, true);
+  offset += 2;
+  view.setUint32(offset, audioBuffer.sampleRate, true);
+  offset += 4;
+  view.setUint32(offset, audioBuffer.sampleRate * channelCount * bytesPerSample, true);
+  offset += 4;
+  view.setUint16(offset, channelCount * bytesPerSample, true);
+  offset += 2;
+  view.setUint16(offset, bytesPerSample * 8, true);
+  offset += 2;
+  writeAscii("data");
+  view.setUint32(offset, dataSize, true);
+  offset += 4;
+
+  const channels = Array.from({ length: channelCount }, (_, index) => audioBuffer.getChannelData(index));
+
+  for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+    for (let channel = 0; channel < channelCount; channel++) {
+      const sample = clamp(channels[channel][sampleIndex], -1, 1);
+      const int16 = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function processTrimStep(
+  file: AudioFile,
+  options: ProcessingOptions["trim"],
+  signal?: AbortSignal,
+): Promise<ProcessedAudioOutput> {
+  const decoded = await decodeAudio(file, signal);
+  const { start, end } = getTrimRangeSeconds(file, options, decoded.duration);
+  const trimmed = trimAudioBuffer(decoded, start, end);
+  const blob = encodeWav(trimmed);
+
+  return {
+    fileId: file.id,
+    fileName: replaceExtension(file.name, "wav"),
+    blob,
+    mimeType: "audio/wav",
+    format: "wav",
+    duration: trimmed.duration,
+    sampleRate: trimmed.sampleRate,
+    channels: trimmed.numberOfChannels,
+  };
+}
+
 export function createInitialAggregate(totalFiles: number): AggregateProgress {
   return {
     totalFiles,
@@ -197,17 +355,22 @@ export async function* processAudioBatch(
       },
     ]),
   );
+  const outputs = new Map<string, ProcessedAudioOutput>();
 
   const percent = () => (totalUnits === 0 ? 100 : Math.round((completedUnits / totalUnits) * 100));
   const emit = (fileId: string): BatchProgressUpdate => {
     const state = getRequired(fileStates, fileId);
+    const output = outputs.get(fileId);
     return {
       file: snapshot(state),
       aggregate: buildAggregate(fileStates, percent()),
+      output,
     };
   };
 
   for (const file of files) {
+    let completedForCurrentFile = 0;
+
     try {
       throwIfAborted(signal);
 
@@ -231,18 +394,27 @@ export async function* processAudioBatch(
         state.step = step;
         yield emit(file.id);
 
-        await sleep(stepDelayMs, signal);
+        if (step === "trim") {
+          const output = await processTrimStep(file, options.trim, signal);
+          outputs.set(file.id, output);
+        } else {
+          await sleep(stepDelayMs, signal);
+        }
 
         completedUnits += 1;
+        completedForCurrentFile += 1;
         yield emit(file.id);
       }
 
       state.status = "success";
       state.step = undefined;
+      state.message = outputs.has(file.id) ? `Prepared ${outputs.get(file.id)?.fileName}` : undefined;
       yield emit(file.id);
     } catch (error) {
       const state = fileStates.get(file.id);
       if (state) {
+        const remainingUnits = Math.max(stepsPerFile - completedForCurrentFile, 0);
+        completedUnits += remainingUnits;
         state.status = "failed";
         state.step = undefined;
         state.message = isAbortError(error)
