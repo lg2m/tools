@@ -163,6 +163,50 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
+export function validateTargetSampleRate(targetRate: number): number {
+  if (!Number.isFinite(targetRate) || targetRate <= 0) {
+    throw new Error("Target sample rate must be a finite positive number");
+  }
+
+  return Math.round(targetRate);
+}
+
+export function calculateResampledFrameLength(sourceLength: number, sourceRate: number, targetRate: number): number {
+  if (!Number.isFinite(sourceLength) || sourceLength <= 0) {
+    throw new Error("Source length must be a finite positive number");
+  }
+  if (!Number.isFinite(sourceRate) || sourceRate <= 0) {
+    throw new Error("Source sample rate must be a finite positive number");
+  }
+
+  const validatedTargetRate = validateTargetSampleRate(targetRate);
+  return Math.max(1, Math.ceil((sourceLength / sourceRate) * validatedTargetRate));
+}
+
+export function validateHighpassCutoffHz(cutoffHz: number, sampleRate: number): number {
+  if (!Number.isFinite(cutoffHz) || cutoffHz <= 0) {
+    throw new Error("High-pass cutoff must be a finite positive number");
+  }
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+    throw new Error("Sample rate must be a finite positive number");
+  }
+
+  const nyquist = sampleRate / 2;
+  if (nyquist <= 1) {
+    throw new Error("Sample rate is too low for high-pass filtering");
+  }
+
+  return clamp(cutoffHz, 1, nyquist - 0.001);
+}
+
+export function dbToAmplitude(db: number): number {
+  if (!Number.isFinite(db)) {
+    throw new Error("dB value must be finite");
+  }
+
+  return 10 ** (db / 20);
+}
+
 function replaceExtension(fileName: string, nextExtension: string): string {
   const dotIndex = fileName.lastIndexOf(".");
   if (dotIndex <= 0) return `${fileName}.${nextExtension}`;
@@ -267,6 +311,76 @@ export function getPeakAmplitude(channels: readonly Float32Array[]): number {
   return peak;
 }
 
+export function calculateSilenceTrimFrames(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+  thresholdDb: number,
+  minDurationMs: number,
+): { startFrame: number; endFrame: number } {
+  if (channels.length === 0) {
+    throw new Error("Cannot detect silence without channels");
+  }
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+    throw new Error("Sample rate must be a finite positive number");
+  }
+  if (!Number.isFinite(minDurationMs) || minDurationMs < 0) {
+    throw new Error("Minimum silence duration must be a finite non-negative number");
+  }
+
+  const frameCount = channels[0].length;
+  for (let channelIndex = 1; channelIndex < channels.length; channelIndex++) {
+    if (channels[channelIndex].length !== frameCount) {
+      throw new Error("Cannot detect silence with mismatched channel lengths");
+    }
+  }
+
+  const thresholdAmplitude = dbToAmplitude(thresholdDb);
+  const minSilenceFrames = Math.max(1, Math.round((sampleRate * minDurationMs) / 1000));
+
+  let firstNonSilentFrame = -1;
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+    let isFrameSilent = true;
+    for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
+      if (Math.abs(channels[channelIndex][frameIndex]) > thresholdAmplitude) {
+        isFrameSilent = false;
+        break;
+      }
+    }
+
+    if (!isFrameSilent) {
+      firstNonSilentFrame = frameIndex;
+      break;
+    }
+  }
+
+  if (firstNonSilentFrame === -1) {
+    return { startFrame: 0, endFrame: frameCount };
+  }
+
+  let lastNonSilentFrame = firstNonSilentFrame;
+  for (let frameIndex = frameCount - 1; frameIndex >= firstNonSilentFrame; frameIndex--) {
+    let isFrameSilent = true;
+    for (let channelIndex = 0; channelIndex < channels.length; channelIndex++) {
+      if (Math.abs(channels[channelIndex][frameIndex]) > thresholdAmplitude) {
+        isFrameSilent = false;
+        break;
+      }
+    }
+
+    if (!isFrameSilent) {
+      lastNonSilentFrame = frameIndex;
+      break;
+    }
+  }
+
+  const leadingSilenceFrames = firstNonSilentFrame;
+  const trailingSilenceFrames = frameCount - (lastNonSilentFrame + 1);
+  const startFrame = leadingSilenceFrames >= minSilenceFrames ? firstNonSilentFrame : 0;
+  const endFrame = trailingSilenceFrames >= minSilenceFrames ? lastNonSilentFrame + 1 : frameCount;
+
+  return { startFrame, endFrame };
+}
+
 function trimAudioBuffer(audioBuffer: AudioBuffer, startSeconds: number, endSeconds: number): AudioBuffer {
   const startFrame = Math.floor(startSeconds * audioBuffer.sampleRate);
   const endFrame = Math.ceil(endSeconds * audioBuffer.sampleRate);
@@ -334,6 +448,91 @@ function normalizeAudioBuffer(audioBuffer: AudioBuffer, targetDb: number, signal
   }
 
   return normalized;
+}
+
+async function resampleAudioBuffer(
+  audioBuffer: AudioBuffer,
+  targetRate: number,
+  signal?: AbortSignal,
+): Promise<AudioBuffer> {
+  const validatedTargetRate = validateTargetSampleRate(targetRate);
+  if (audioBuffer.sampleRate === validatedTargetRate) return audioBuffer;
+
+  throwIfAborted(signal);
+
+  const frameLength = calculateResampledFrameLength(audioBuffer.length, audioBuffer.sampleRate, validatedTargetRate);
+  const offlineContext = new OfflineAudioContext(audioBuffer.numberOfChannels, frameLength, validatedTargetRate);
+  const source = offlineContext.createBufferSource();
+
+  source.buffer = audioBuffer;
+  source.connect(offlineContext.destination);
+  source.start(0);
+
+  const rendered = await offlineContext.startRendering();
+  source.disconnect();
+  throwIfAborted(signal);
+
+  return rendered;
+}
+
+async function highpassAudioBuffer(
+  audioBuffer: AudioBuffer,
+  cutoffHz: number,
+  signal?: AbortSignal,
+): Promise<AudioBuffer> {
+  throwIfAborted(signal);
+
+  const validatedCutoffHz = validateHighpassCutoffHz(cutoffHz, audioBuffer.sampleRate);
+  const offlineContext = new OfflineAudioContext(
+    audioBuffer.numberOfChannels,
+    audioBuffer.length,
+    audioBuffer.sampleRate,
+  );
+  const source = offlineContext.createBufferSource();
+  const highpass = offlineContext.createBiquadFilter();
+
+  highpass.type = "highpass";
+  highpass.frequency.value = validatedCutoffHz;
+  highpass.Q.value = 0.707;
+
+  source.buffer = audioBuffer;
+  source.connect(highpass);
+  highpass.connect(offlineContext.destination);
+  source.start(0);
+
+  const rendered = await offlineContext.startRendering();
+  source.disconnect();
+  highpass.disconnect();
+  throwIfAborted(signal);
+
+  return rendered;
+}
+
+function trimSilenceAudioBuffer(
+  audioBuffer: AudioBuffer,
+  thresholdDb: number,
+  minDurationMs: number,
+  signal?: AbortSignal,
+): AudioBuffer {
+  const channels = Array.from({ length: audioBuffer.numberOfChannels }, (_, index) =>
+    audioBuffer.getChannelData(index),
+  );
+  const { startFrame, endFrame } = calculateSilenceTrimFrames(
+    channels,
+    audioBuffer.sampleRate,
+    thresholdDb,
+    minDurationMs,
+  );
+
+  if (startFrame === 0 && endFrame === audioBuffer.length) {
+    return audioBuffer;
+  }
+
+  throwIfAborted(signal);
+
+  const startSeconds = startFrame / audioBuffer.sampleRate;
+  const endSeconds = endFrame / audioBuffer.sampleRate;
+  return trimAudioBuffer(audioBuffer, startSeconds, endSeconds);
 }
 
 function encodeWav(audioBuffer: AudioBuffer): Blob {
@@ -503,9 +702,23 @@ export async function* processAudioBatch(
           const decoded = await ensureWorkingBuffer();
           const { start, end } = getTrimRangeSeconds(file, options.trim, decoded.duration);
           workingBuffer = trimAudioBuffer(decoded, start, end);
+        } else if (step === "silence") {
+          const decoded = await ensureWorkingBuffer();
+          workingBuffer = trimSilenceAudioBuffer(
+            decoded,
+            options.silence.thresholdDb,
+            options.silence.minDurationMs,
+            signal,
+          );
+        } else if (step === "resample") {
+          const decoded = await ensureWorkingBuffer();
+          workingBuffer = await resampleAudioBuffer(decoded, options.resample.targetRate, signal);
         } else if (step === "mono") {
           const decoded = await ensureWorkingBuffer();
           workingBuffer = convertToMono(decoded, signal);
+        } else if (step === "highpass") {
+          const decoded = await ensureWorkingBuffer();
+          workingBuffer = await highpassAudioBuffer(decoded, options.highpass.cutoffHz, signal);
         } else if (step === "normalize") {
           const decoded = await ensureWorkingBuffer();
           workingBuffer = normalizeAudioBuffer(decoded, options.normalize.targetDb, signal);
